@@ -8,7 +8,7 @@ import (
 var version = "7.0.0-dev"
 
 func Version() string {
-	return version
+	return version + "-jb"
 }
 
 var versionMajorMinor = func() string {

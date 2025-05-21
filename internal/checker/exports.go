@@ -53,6 +53,22 @@ func (c *Checker) WasCanceled() bool {
 	return c.wasCanceled
 }
 
+func (c *Checker) GetIndexInfosOfType(t *Type) []*IndexInfo {
+	return c.getIndexInfosOfType(t)
+}
+
+func (c *Checker) GetTypeArguments(t *Type) []*Type {
+	return c.getTypeArguments(t)
+}
+
+func (c *Checker) GetTrueTypeFromConditionalType(t *Type) *Type {
+	return c.getTrueTypeFromConditionalType(t)
+}
+
+func (c *Checker) GetFalseTypeFromConditionalType(t *Type) *Type {
+	return c.getFalseTypeFromConditionalType(t)
+}
+
 func (c *Checker) GetBaseConstraintOfType(t *Type) *Type {
 	return c.getBaseConstraintOfType(t)
 }

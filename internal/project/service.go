@@ -528,6 +528,10 @@ func (s *Service) createConfiguredProject(configFileName string, configFilePath 
 	return project
 }
 
+func (s *Service) FindOrCreateConfiguredProject(configFileName string, includeDeferredClosedProjects bool) *Project {
+	return s.findCreateOrReloadConfiguredProject(configFileName, projectLoadKindCreate, includeDeferredClosedProjects)
+}
+
 func (s *Service) findCreateOrReloadConfiguredProject(configFileName string, projectLoadKind projectLoadKind, includeDeferredClosedProjects bool) *Project {
 	// !!! many such things omitted
 	configFilePath := s.toPath(configFileName)
@@ -539,7 +543,9 @@ func (s *Service) findCreateOrReloadConfiguredProject(configFileName string, pro
 		if project == nil {
 			project = s.createConfiguredProject(configFileName, configFilePath)
 		}
-		s.loadConfiguredProject(project)
+		if projectLoadKind == projectLoadKindReload || project.compilerOptions == nil {
+			s.loadConfiguredProject(project)
+		}
 	default:
 		panic("unhandled projectLoadKind")
 	}
@@ -721,6 +727,10 @@ func (s *Service) createInferredProject(currentDirectory string, projectRootPath
 	project := NewInferredProject(&compilerOptions, currentDirectory, projectRootPath, s)
 	s.inferredProjects = append(s.inferredProjects, project)
 	return project
+}
+
+func (s *Service) ToPath(fileName string) tspath.Path {
+	return s.toPath(fileName)
 }
 
 func (s *Service) toPath(fileName string) tspath.Path {
