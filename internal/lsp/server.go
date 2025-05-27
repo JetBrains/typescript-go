@@ -279,6 +279,13 @@ func (s *Server) dispatchLoop(ctx context.Context) error {
 			}
 
 			handle := func() {
+				defer func() {
+					if r := recover(); r != nil {
+						stack := debug.Stack()
+						s.Log("panic running handle:", r, string(stack))
+						s.sendError(req.ID, r.(error))
+					}
+				}()
 				if err := s.handleRequestOrNotification(requestCtx, req); err != nil {
 					if errors.Is(err, io.EOF) {
 						lspExit()
