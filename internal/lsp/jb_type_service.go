@@ -654,6 +654,18 @@ func assignUnionOrIntersectionTypeProperties(t *checker.UnionOrIntersectionType,
 		resolvedProperties = append(resolvedProperties, ConvertSymbol(p, ctx))
 	}
 	tscType.Set("resolvedProperties", resolvedProperties)
+
+	var callSignatures = make([]interface{}, 0)
+	for _, s := range ctx.checker.GetCallSignatures(t.AsType()) {
+		callSignatures = append(callSignatures, ConvertSignature(s, ctx))
+	}
+	tscType.Set("callSignatures", callSignatures)
+
+	var constructSignatures = make([]interface{}, 0)
+	for _, s := range ctx.checker.GetConstructSignatures(t.AsType()) {
+		constructSignatures = append(constructSignatures, ConvertSignature(s, ctx))
+	}
+	tscType.Set("constructSignatures", constructSignatures)
 }
 
 func assignConditionalTypeProperties(t *checker.ConditionalType, ctx *ConvertContext, tscType *collections.OrderedMap[string, interface{}]) {
