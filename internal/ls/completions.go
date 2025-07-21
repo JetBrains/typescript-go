@@ -2693,6 +2693,10 @@ func getSwitchedType(caseClause *ast.CaseClauseNode, typeChecker *checker.Checke
 	return typeChecker.GetTypeAtLocation(caseClause.Parent.Parent.Expression())
 }
 
+func IsEqualityOperatorKind(kind ast.Kind) bool {
+	return isEqualityOperatorKind(kind)
+}
+
 func isEqualityOperatorKind(kind ast.Kind) bool {
 	switch kind {
 	case ast.KindEqualsEqualsEqualsToken, ast.KindEqualsEqualsToken,

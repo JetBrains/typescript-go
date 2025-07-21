@@ -502,6 +502,8 @@ func (s *Server) handleRequestOrNotification(ctx context.Context, req *lsproto.R
 		return s.handleDocumentSymbol(ctx, req)
 	case *lsproto.CompletionItem:
 		return s.handleCompletionItemResolve(ctx, req)
+	case *lsproto.JbHandleCustomTsServerCommandParams:
+		return s.jbHandleCustomTsServerCommand(ctx, req)
 	default:
 		switch req.Method {
 		case lsproto.MethodShutdown:

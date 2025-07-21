@@ -572,6 +572,10 @@ func (t *Type) ObjectFlags() ObjectFlags {
 	return t.objectFlags
 }
 
+func (t *Type) Alias() *TypeAlias {
+	return t.alias
+}
+
 // Casts for concrete struct types
 
 func (t *Type) AsIntrinsicType() *IntrinsicType             { return t.data.(*IntrinsicType) }
@@ -768,6 +772,10 @@ func (t *LiteralType) String() string {
 	return ValueToString(t.value)
 }
 
+func (t *LiteralType) FreshType() *Type {
+	return t.freshType
+}
+
 // UniqueESSymbolTypeData
 
 type UniqueESSymbolType struct {
@@ -930,6 +938,10 @@ type TupleElementInfo struct {
 
 func (t *TupleElementInfo) TupleElementFlags() ElementFlags { return t.flags }
 
+func (i *TupleElementInfo) ElementFlags() ElementFlags {
+	return i.flags
+}
+
 type TupleType struct {
 	InterfaceType
 	elementInfos  []TupleElementInfo
@@ -946,6 +958,10 @@ func (t *TupleType) ElementFlags() []ElementFlags {
 		elementFlags[i] = info.flags
 	}
 	return elementFlags
+}
+
+func (t *TupleType) ElementInfos() []TupleElementInfo {
+	return t.elementInfos
 }
 
 // SingleSignatureType
@@ -1035,6 +1051,10 @@ type TypeParameter struct {
 	resolvedDefaultType *Type
 }
 
+func (t *TypeParameter) IsThisType() bool {
+	return t.isThisType
+}
+
 // IndexFlags
 
 type IndexFlags uint32
@@ -1063,10 +1083,22 @@ type IndexedAccessType struct {
 	accessFlags AccessFlags // Only includes AccessFlags.Persistent
 }
 
+func (t *IndexedAccessType) ObjectType() *Type {
+	return t.objectType
+}
+
+func (t *IndexedAccessType) IndexType() *Type {
+	return t.indexType
+}
+
 type TemplateLiteralType struct {
 	ConstrainedType
 	texts []string // Always one element longer than types
 	types []*Type  // Always at least one element
+}
+
+func (t *TemplateLiteralType) Texts() []string {
+	return t.texts
 }
 
 type StringMappingType struct {
@@ -1078,6 +1110,10 @@ type SubstitutionType struct {
 	ConstrainedType
 	baseType   *Type // Target type
 	constraint *Type // Constraint that target type is known to satisfy
+}
+
+func (t *SubstitutionType) BaseType() *Type {
+	return t.baseType
 }
 
 type ConditionalRoot struct {
@@ -1103,6 +1139,14 @@ type ConditionalType struct {
 	resolvedConstraintOfDistributive *Type
 	mapper                           *TypeMapper
 	combinedMapper                   *TypeMapper
+}
+
+func (t *ConditionalType) CheckType() *Type {
+	return t.checkType
+}
+
+func (t *ConditionalType) ExtendsType() *Type {
+	return t.extendsType
 }
 
 // SignatureFlags
@@ -1163,6 +1207,10 @@ func (s *Signature) ThisParameter() *ast.Symbol {
 	return s.thisParameter
 }
 
+func (s *Signature) ReturnType() *Type {
+	return s.resolvedReturnType
+}
+
 func (s *Signature) Parameters() []*ast.Symbol {
 	return s.parameters
 }
@@ -1199,6 +1247,22 @@ type IndexInfo struct {
 	valueType   *Type
 	isReadonly  bool
 	declaration *ast.Node // IndexSignatureDeclaration
+}
+
+func (i *IndexInfo) KeyType() *Type {
+	return i.keyType
+}
+
+func (i *IndexInfo) ValueType() *Type {
+	return i.valueType
+}
+
+func (i *IndexInfo) IsReadonly() bool {
+	return i.isReadonly
+}
+
+func (i *IndexInfo) Declaration() *ast.Node {
+	return i.declaration
 }
 
 /**
