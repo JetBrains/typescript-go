@@ -324,7 +324,7 @@ func ConvertType(t *checker.Type, ctx *ConvertContext) *collections.OrderedMap[s
 				typeArgs := ctx.checker.GetTypeArguments(t)
 				for _, t := range typeArgs {
 					// Filter out 'this' type
-					if t.Flags()&checker.TypeFlagsTypeParameter != 0 && !t.AsTypeParameter().IsThisType() {
+					if t.Flags()&checker.TypeFlagsTypeParameter == 0 || !t.AsTypeParameter().IsThisType() {
 						resolvedArgs = append(resolvedArgs, ConvertType(t, ctx))
 					}
 				}
