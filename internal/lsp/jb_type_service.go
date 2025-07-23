@@ -622,19 +622,19 @@ func ConvertTypeProperties(t *checker.Type, ctx *ConvertContext) *collections.Or
 
 func assignObjectTypeProperties(t *checker.ObjectType, ctx *ConvertContext, tscType *collections.OrderedMap[string, interface{}]) {
 	var constructSignatures = make([]interface{}, 0)
-	for _, s := range t.ConstructSignatures() {
+	for _, s := range ctx.checker.GetConstructSignatures(t.AsType()) {
 		constructSignatures = append(constructSignatures, ConvertSignature(s, ctx))
 	}
 	tscType.Set("constructSignatures", constructSignatures)
 
 	var callSignatures = make([]interface{}, 0)
-	for _, s := range t.CallSignatures() {
+	for _, s := range ctx.checker.GetCallSignatures(t.AsType()) {
 		callSignatures = append(callSignatures, ConvertSignature(s, ctx))
 	}
 	tscType.Set("callSignatures", callSignatures)
 
 	var properties = make([]interface{}, 0)
-	for _, p := range t.Properties() {
+	for _, p := range ctx.checker.GetPropertiesOfType(t.AsType()) {
 		properties = append(properties, ConvertSymbol(p, ctx))
 	}
 	tscType.Set("properties", properties)
@@ -689,8 +689,8 @@ func ConvertSignature(signature *checker.Signature, ctx *ConvertContext) *collec
 			result.Set("declaration", ConvertNode(declaration, ctx))
 		}
 
-		if returnType := signature.ReturnType(); returnType != nil {
-			result.Set("type", ConvertType(returnType, ctx))
+		if returnType := ctx.checker.GetReturnTypeOfSignature(signature); returnType != nil {
+			result.Set("resolvedReturnType", ConvertType(returnType, ctx))
 		}
 
 		var parameters = make([]interface{}, 0)
