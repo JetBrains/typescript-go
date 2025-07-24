@@ -385,3 +385,17 @@ func convertElementFlags(goFlags checker.ElementFlags) TsElementFlags {
 	}
 	return result
 }
+
+type TsSignatureFlags uint32
+
+const (
+	TsIsSignatureCandidateForOverloadFailure TsSignatureFlags = 1 << 7
+)
+
+func convertSignatureFlags(signature *checker.Signature) TsSignatureFlags {
+	var result TsSignatureFlags = 0
+	if signature.IsSignatureCandidateForOverloadFailure() {
+		result = result | TsIsSignatureCandidateForOverloadFailure
+	}
+	return result
+}

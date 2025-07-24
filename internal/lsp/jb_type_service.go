@@ -249,6 +249,62 @@ func AreTypesMutuallyAssignable(
 	return result, nil
 }
 
+func GetResolvedSignature(
+	ctx context.Context,
+	project *project.Project,
+	fileName string,
+	Range lsproto.Range,
+) (*collections.OrderedMap[string, interface{}], error) {
+	projectId := getProjectId(project)
+	projectVersion := project.Version()
+	languageService, done := project.GetLanguageServiceForRequest(ctx)
+	defer done()
+	program := languageService.GetProgram()
+	sourceFile := program.GetSourceFile(fileName)
+	if sourceFile == nil {
+		return nil, SourceFileNotFoundError
+	}
+
+	startOffset := scanner.GetPositionOfLineAndCharacter(sourceFile, int(Range.Start.Line), int(Range.Start.Character))
+	endOffset := scanner.GetPositionOfLineAndCharacter(sourceFile, int(Range.End.Line), int(Range.End.Character))
+
+	typeChecker, done := program.GetTypeCheckerForFile(ctx, sourceFile)
+	defer done()
+
+	// Find the node at the given position
+	node := astnav.GetTokenAtPosition(sourceFile, startOffset).AsNode()
+	for node != nil && node.End() < endOffset {
+		node = node.Parent
+	}
+
+	if node == nil || node == sourceFile.AsNode() {
+		return nil, nil
+	}
+
+	// Find the call expression
+	for !ast.IsCallLikeExpression(node) {
+		node = node.Parent
+		if node == nil || node == sourceFile.AsNode() {
+			return nil, nil
+		}
+	}
+
+	// Get the resolved signature
+	signature := typeChecker.GetResolvedSignature(node)
+	if signature == nil {
+		return nil, nil
+	}
+
+	// Return the signature information
+	convertCtx := NewConvertContext(typeChecker, projectId, projectVersion)
+	prepared := ConvertSignature(signature, convertCtx)
+	prepared.Set("ideTypeCheckerId", projectVersion)
+	prepared.Set("ideProjectId", projectId)
+	prepared.Set("ideObjectType", "SignatureObject")
+
+	return prepared, nil
+}
+
 type ConvertContext struct {
 	nextId               int
 	createdObjectsIdeIds map[interface{}]int
@@ -698,6 +754,8 @@ func ConvertSignature(signature *checker.Signature, ctx *ConvertContext) *collec
 			parameters = append(parameters, ConvertSymbol(param, ctx))
 		}
 		result.Set("parameters", parameters)
+
+		result.Set("flags", convertSignatureFlags(signature))
 
 		return result
 	}, ctx)

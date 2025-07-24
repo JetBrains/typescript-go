@@ -1219,6 +1219,10 @@ func (s *Signature) HasRestParameter() bool {
 	return s.flags&SignatureFlagsHasRestParameter != 0
 }
 
+func (s *Signature) IsSignatureCandidateForOverloadFailure() bool {
+	return s.flags&SignatureFlagsIsSignatureCandidateForOverloadFailure != 0
+}
+
 type CompositeSignature struct {
 	isUnion    bool         // True for union, false for intersection
 	signatures []*Signature // Individual signatures

@@ -21,6 +21,7 @@ const (
 	IdeCommandGetSymbolType       IdeCommand = "ideGetSymbolType"
 	IdeCommandGetTypeProperties   IdeCommand = "ideGetTypeProperties"
 	IdeAreTypesMutuallyAssignable IdeCommand = "ideAreTypesMutuallyAssignable"
+	IdeGetResolvedSignature       IdeCommand = "ideGetResolvedSignature"
 )
 
 type TypeRequestKind string
@@ -56,6 +57,12 @@ type AreTypesMutuallyAssignableArguments struct {
 	IdeProjectId     int `json:"ideProjectId"`
 	Type1Id          int `json:"type1Id"`
 	Type2Id          int `json:"type2Id"`
+}
+
+type GetResolvedSignatureArguments struct {
+	File            DocumentUri  `json:"file"`
+	Range           Range        `json:"range"`
+	ProjectFileName *DocumentUri `json:"projectFileName"`
 }
 
 func (p *JbHandleCustomTsServerCommandParams) UnmarshalJSON(data []byte) error {
@@ -101,6 +108,13 @@ func (p *JbHandleCustomTsServerCommandParams) UnmarshalJSON(data []byte) error {
 		var typedArgs AreTypesMutuallyAssignableArguments
 		if err := json.Unmarshal(temp.Arguments, &typedArgs); err != nil {
 			return fmt.Errorf("failed to unmarshal AreTypesMutuallyAssignableArguments: %w", err)
+		}
+		args = &typedArgs
+
+	case IdeGetResolvedSignature:
+		var typedArgs GetResolvedSignatureArguments
+		if err := json.Unmarshal(temp.Arguments, &typedArgs); err != nil {
+			return fmt.Errorf("failed to unmarshal GetResolvedSignatureArguments: %w", err)
 		}
 		args = &typedArgs
 

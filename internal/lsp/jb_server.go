@@ -24,29 +24,7 @@ func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto
 	case lsproto.IdeCommandGetElementType:
 		{
 			args := params.Arguments.(*lsproto.GetElementTypeArguments)
-			var project *project.Project
-			file := ls.DocumentURIToFileName(args.File)
-
-			if args.ProjectFileName != nil {
-				projectFileName := ls.DocumentURIToFileName(*args.ProjectFileName)
-				project = s.projectService.FindOrCreateConfiguredProject(projectFileName, true)
-				if project.GetProgram().GetSourceFile(file) == nil {
-					// load a default project for the file
-					project = nil
-				}
-			}
-
-			if project == nil {
-				fileContents, ok := s.projectService.FS().ReadFile(file)
-				if !ok {
-					panic("Failed to read " + file)
-				}
-				scriptKind := core.GetScriptKindFromFileName(file)
-				// TODO - handle list of automatically opened files and close them automatically as well
-				s.projectService.OpenFile(file, fileContents, scriptKind, file)
-				_, project = s.projectService.EnsureDefaultProjectForFile(file)
-			}
-
+			project, file := s.GetProjectAndFileName(args.ProjectFileName, args.File)
 			element, err := IdeGetTypeOfElement(ctx, project, file, &args.Range, args.ForceReturnType, args.TypeRequestKind)
 			s.jbSendResult(req.ID, element, err)
 		}
@@ -69,8 +47,43 @@ func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto
 			result, err := AreTypesMutuallyAssignable(ctx, args.IdeProjectId, args.IdeTypeCheckerId, args.Type1Id, args.Type2Id)
 			s.jbSendResult(req.ID, result, err)
 		}
+	case lsproto.IdeGetResolvedSignature:
+		{
+			args := params.Arguments.(*lsproto.GetResolvedSignatureArguments)
+			project, file := s.GetProjectAndFileName(args.ProjectFileName, args.File)
+
+			result, err := GetResolvedSignature(ctx, project, file, args.Range)
+			s.jbSendResult(req.ID, result, err)
+		}
 	}
 	return nil
+}
+
+func (s *Server) GetProjectAndFileName(projectFileName *lsproto.DocumentUri, fileUri lsproto.DocumentUri) (*project.Project, string) {
+	var project *project.Project
+	file := ls.DocumentURIToFileName(fileUri)
+
+	if projectFileName != nil {
+		projectFileName := ls.DocumentURIToFileName(*projectFileName)
+		project = s.projectService.FindOrCreateConfiguredProject(projectFileName, true)
+		if project.GetProgram().GetSourceFile(file) == nil {
+			// load a default project for the file
+			project = nil
+		}
+	}
+
+	if project == nil {
+		fileContents, ok := s.projectService.FS().ReadFile(file)
+		if !ok {
+			panic("Failed to read " + file)
+		}
+		scriptKind := core.GetScriptKindFromFileName(file)
+		// TODO - handle list of automatically opened files and close them automatically as well
+		s.projectService.OpenFile(file, fileContents, scriptKind, file)
+		_, project = s.projectService.EnsureDefaultProjectForFile(file)
+	}
+
+	return project, file
 }
 
 func (s *Server) jbSendResult(id *lsproto.ID, result *collections.OrderedMap[string, interface{}], error error) {
