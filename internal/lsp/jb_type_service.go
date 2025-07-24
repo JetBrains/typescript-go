@@ -562,11 +562,7 @@ func ConvertNode(node *ast.Node, ctx *ConvertContext) *collections.OrderedMap[st
 			}
 
 			// Check for computed property
-			if (ast.IsPropertyAssignment(node) ||
-				ast.IsPropertySignatureDeclaration(node) ||
-				ast.IsPropertyDeclaration(node) ||
-				ast.IsMethodSignatureDeclaration(node) ||
-				ast.IsMethodDeclaration(node)) && ast.IsComputedPropertyName(node) {
+			if node.Name() != nil && ast.IsComputedPropertyName(node.Name()) {
 				result.Set("computedProperty", true)
 			}
 			return result
