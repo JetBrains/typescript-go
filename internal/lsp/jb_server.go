@@ -7,6 +7,7 @@ import (
 	"github.com/microsoft/typescript-go/internal/ls"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/project"
+	"github.com/microsoft/typescript-go/internal/tspath"
 	"runtime/debug"
 )
 
@@ -73,6 +74,12 @@ func (s *Server) GetProjectAndFileName(projectFileName *lsproto.DocumentUri, fil
 	}
 
 	if project == nil {
+		canonicalFileName := tspath.GetCanonicalFileName(file, s.projectService.FS().UseCaseSensitiveFileNames())
+		scriptInfo := s.projectService.DocumentStore().GetScriptInfoByPath(tspath.Path(canonicalFileName))
+		if scriptInfo != nil {
+			return scriptInfo.ContainingProjects()[0], file
+		}
+
 		fileContents, ok := s.projectService.FS().ReadFile(file)
 		if !ok {
 			panic("Failed to read " + file)
