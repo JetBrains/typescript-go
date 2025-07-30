@@ -99,7 +99,7 @@ func IdeGetTypeOfElement(
 
 	contextFlags := typeRequestKindToContextFlags(typeRequestKind)
 	isContextual := contextFlags >= 0
-	if (isContextual && !ast.IsExpression(node)) || (!isContextual && (ast.IsStringLiteral(node) || ast.IsNumericLiteral(node))) {
+	if isContextual && !ast.IsExpression(node) || (!isContextual && (ast.IsStringLiteral(node) || ast.IsNumericLiteral(node))) || ast.IsIdentifier(node) && ast.IsTypeReferenceNode(node.Parent) {
 		if node.Pos() == node.Parent.Pos() && node.End() == node.Parent.End() {
 			node = node.Parent
 		}
