@@ -1,6 +1,7 @@
 package fourslash
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
@@ -292,6 +293,8 @@ func sendNotification[Params any](t *testing.T, f *FourslashTest, info lsproto.N
 }
 
 func (f *FourslashTest) writeMsg(t *testing.T, msg *lsproto.Message) {
+	enc := json.NewEncoder(io.Discard)
+	assert.NilError(t, enc.Encode(msg), "failed to encode message as JSON")
 	if err := f.in.Write(msg); err != nil {
 		t.Fatalf("failed to write message: %v", err)
 	}
@@ -303,6 +306,8 @@ func (f *FourslashTest) readMsg(t *testing.T) *lsproto.Message {
 	if err != nil {
 		t.Fatalf("failed to read message: %v", err)
 	}
+	enc := json.NewEncoder(io.Discard)
+	assert.NilError(t, enc.Encode(msg), "failed to encode message as JSON")
 	return msg
 }
 
@@ -453,15 +458,6 @@ func (f *FourslashTest) openFile(t *testing.T, filename string) {
 	})
 }
 
-func (f *FourslashTest) currentTextDocumentPositionParams() lsproto.TextDocumentPositionParams {
-	return lsproto.TextDocumentPositionParams{
-		TextDocument: lsproto.TextDocumentIdentifier{
-			Uri: ls.FileNameToDocumentURI(f.activeFilename),
-		},
-		Position: f.currentCaretPosition,
-	}
-}
-
 func getLanguageKind(filename string) lsproto.LanguageKind {
 	if tspath.FileExtensionIsOneOf(
 		filename,
@@ -555,8 +551,11 @@ func (f *FourslashTest) verifyCompletionsWorker(t *testing.T, expected *Completi
 		prefix = fmt.Sprintf("At position (Ln %d, Col %d): ", f.currentCaretPosition.Line, f.currentCaretPosition.Character)
 	}
 	params := &lsproto.CompletionParams{
-		TextDocumentPositionParams: f.currentTextDocumentPositionParams(),
-		Context:                    &lsproto.CompletionContext{},
+		TextDocument: lsproto.TextDocumentIdentifier{
+			Uri: ls.FileNameToDocumentURI(f.activeFilename),
+		},
+		Position: f.currentCaretPosition,
+		Context:  &lsproto.CompletionContext{},
 	}
 	resMsg, result, resultOk := sendRequest(t, f, lsproto.TextDocumentCompletionInfo, params)
 	if resMsg == nil {
@@ -806,8 +805,11 @@ func (f *FourslashTest) VerifyBaselineFindAllReferences(
 		f.GoToMarkerOrRange(t, markerOrRange)
 
 		params := &lsproto.ReferenceParams{
-			TextDocumentPositionParams: f.currentTextDocumentPositionParams(),
-			Context:                    &lsproto.ReferenceContext{},
+			TextDocument: lsproto.TextDocumentIdentifier{
+				Uri: ls.FileNameToDocumentURI(f.activeFilename),
+			},
+			Position: f.currentCaretPosition,
+			Context:  &lsproto.ReferenceContext{},
 		}
 		resMsg, result, resultOk := sendRequest(t, f, lsproto.TextDocumentReferencesInfo, params)
 		if resMsg == nil {
@@ -825,7 +827,7 @@ func (f *FourslashTest) VerifyBaselineFindAllReferences(
 			}
 		}
 
-		f.baseline.addResult("findAllReferences", f.getBaselineForLocationsWithFileContents(*result, baselineFourslashLocationsOptions{
+		f.baseline.addResult("findAllReferences", f.getBaselineForLocationsWithFileContents(*result.Locations, baselineFourslashLocationsOptions{
 			marker:     markerOrRange.GetMarker(),
 			markerName: "/*FIND ALL REFS*/",
 		}))
@@ -861,7 +863,10 @@ func (f *FourslashTest) VerifyBaselineGoToDefinition(
 		f.GoToMarkerOrRange(t, markerOrRange)
 
 		params := &lsproto.DefinitionParams{
-			TextDocumentPositionParams: f.currentTextDocumentPositionParams(),
+			TextDocument: lsproto.TextDocumentIdentifier{
+				Uri: ls.FileNameToDocumentURI(f.activeFilename),
+			},
+			Position: f.currentCaretPosition,
 		}
 
 		resMsg, result, resultOk := sendRequest(t, f, lsproto.TextDocumentDefinitionInfo, params)
@@ -881,14 +886,12 @@ func (f *FourslashTest) VerifyBaselineGoToDefinition(
 		}
 
 		var resultAsLocations []lsproto.Location
-		if result != nil {
-			if result.Locations != nil {
-				resultAsLocations = *result.Locations
-			} else if result.Location != nil {
-				resultAsLocations = []lsproto.Location{*result.Location}
-			} else {
-				t.Fatalf("Unexpected definition response type at marker '%s': %T", *f.lastKnownMarkerName, result.DefinitionLinks)
-			}
+		if result.Locations != nil {
+			resultAsLocations = *result.Locations
+		} else if result.Location != nil {
+			resultAsLocations = []lsproto.Location{*result.Location}
+		} else if result.DefinitionLinks != nil {
+			t.Fatalf("Unexpected definition response type at marker '%s': %T", *f.lastKnownMarkerName, result.DefinitionLinks)
 		}
 
 		f.baseline.addResult("goToDefinition", f.getBaselineForLocationsWithFileContents(resultAsLocations, baselineFourslashLocationsOptions{
@@ -1070,9 +1073,7 @@ func (f *FourslashTest) editScript(t *testing.T, fileName string, start int, end
 	}
 	sendNotification(t, f, lsproto.TextDocumentDidChangeInfo, &lsproto.DidChangeTextDocumentParams{
 		TextDocument: lsproto.VersionedTextDocumentIdentifier{
-			TextDocumentIdentifier: lsproto.TextDocumentIdentifier{
-				Uri: ls.FileNameToDocumentURI(fileName),
-			},
+			Uri:     ls.FileNameToDocumentURI(fileName),
 			Version: script.version,
 		},
 		ContentChanges: []lsproto.TextDocumentContentChangePartialOrWholeDocument{

@@ -9,7 +9,9 @@ import type {
     MetaModel,
     Notification,
     OrType,
+    Property,
     Request,
+    Structure,
     Type,
 } from "./metaModelSchema.mts";
 
@@ -25,6 +27,56 @@ if (!fs.existsSync(metaModelPath)) {
 }
 
 const model: MetaModel = JSON.parse(fs.readFileSync(metaModelPath, "utf-8"));
+
+// Preprocess the model to inline extends/mixins contents
+function preprocessModel() {
+    const structureMap = new Map<string, Structure>();
+    for (const structure of model.structures) {
+        structureMap.set(structure.name, structure);
+    }
+
+    function collectInheritedProperties(structure: Structure, visited = new Set<string>()): Property[] {
+        if (visited.has(structure.name)) {
+            return []; // Avoid circular dependencies
+        }
+        visited.add(structure.name);
+
+        const properties: Property[] = [];
+        const inheritanceTypes = [...(structure.extends || []), ...(structure.mixins || [])];
+
+        for (const type of inheritanceTypes) {
+            if (type.kind === "reference") {
+                const inheritedStructure = structureMap.get(type.name);
+                if (inheritedStructure) {
+                    properties.push(
+                        ...collectInheritedProperties(inheritedStructure, new Set(visited)),
+                        ...inheritedStructure.properties,
+                    );
+                }
+            }
+        }
+
+        return properties;
+    }
+
+    // Inline inheritance for each structure
+    for (const structure of model.structures) {
+        const inheritedProperties = collectInheritedProperties(structure);
+
+        // Merge properties with structure's own properties taking precedence
+        const propertyMap = new Map<string, Property>();
+
+        inheritedProperties.forEach(prop => propertyMap.set(prop.name, prop));
+        structure.properties.forEach(prop => propertyMap.set(prop.name, prop));
+
+        structure.properties = Array.from(propertyMap.values());
+        structure.extends = undefined;
+        structure.mixins = undefined;
+    }
+}
+
+// Preprocess the model before proceeding
+preprocessModel();
 
 interface GoType {
     name: string;
@@ -49,7 +101,7 @@ function titleCase(s: string) {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function resolveType(type: Type, nullToPointer?: boolean): GoType {
+function resolveType(type: Type): GoType {
     switch (type.kind) {
         case "base":
             switch (type.name) {
@@ -151,7 +203,7 @@ function resolveType(type: Type, nullToPointer?: boolean): GoType {
             throw new Error("Unexpected non-empty literal object: " + JSON.stringify(type.value));
 
         case "or": {
-            return handleOrType(type, nullToPointer);
+            return handleOrType(type);
         }
 
         default:
@@ -187,7 +239,7 @@ function flattenOrTypes(types: Type[]): Type[] {
     return Array.from(flattened);
 }
 
-function handleOrType(orType: OrType, nullToPointer: boolean | undefined): GoType {
+function handleOrType(orType: OrType): GoType {
     // First, flatten any nested OR types
     const types = flattenOrTypes(orType.items);
 
@@ -237,16 +289,6 @@ function handleOrType(orType: OrType, nullToPointer: boolean | undefined): GoTyp
             throw new Error(`Unsupported type kind in union: ${type.kind}`);
         }
     });
-
-    const needsPointer = containedNull && !!nullToPointer;
-
-    if (needsPointer && nonNullTypes.length === 1) {
-        const name = resolveType(nonNullTypes[0], true).name;
-        return {
-            name,
-            needsPointer: true,
-        };
-    }
 
     // Find longest common prefix of member names chunked by PascalCase
     function findLongestCommonPrefix(names: string[]): string {
@@ -313,7 +355,7 @@ function handleOrType(orType: OrType, nullToPointer: boolean | undefined): GoTyp
         unionTypeName = memberNames.join("Or");
     }
 
-    if (containedNull && !nullToPointer) {
+    if (containedNull) {
         unionTypeName += "OrNull";
     }
     else {
@@ -326,7 +368,7 @@ function handleOrType(orType: OrType, nullToPointer: boolean | undefined): GoTyp
 
     return {
         name: unionTypeName,
-        needsPointer,
+        needsPointer: false,
     };
 }
 
@@ -453,30 +495,7 @@ function generateCode() {
 
             writeLine(`type ${name} struct {`);
 
-            // Embed extended types and mixins
-            for (const e of structure.extends || []) {
-                if (e.kind !== "reference") {
-                    throw new Error(`Unexpected extends kind: ${e.kind}`);
-                }
-                writeLine(`\t${e.name}`);
-            }
-
-            for (const m of structure.mixins || []) {
-                if (m.kind !== "reference") {
-                    throw new Error(`Unexpected mixin kind: ${m.kind}`);
-                }
-                writeLine(`\t${m.name}`);
-            }
-
-            // Insert a blank line after embeds if there were any
-            if (
-                (structure.extends && structure.extends.length > 0) ||
-                (structure.mixins && structure.mixins.length > 0)
-            ) {
-                writeLine("");
-            }
-
-            // Then properties
+            // Properties are now inlined, no need to embed extends/mixins
             for (const prop of structure.properties) {
                 if (includeDocumentation) {
                     write(formatDocumentation(prop.documentation));
@@ -665,7 +684,7 @@ function generateCode() {
             }
 
             writeLine(`// Response type for \`${request.method}\``);
-            const resultType = resolveType(request.result, /*nullToPointer*/ true);
+            const resultType = resolveType(request.result);
             const goType = resultType.needsPointer ? `*${resultType.name}` : resultType.name;
 
             writeLine(`type ${responseTypeName} = ${goType}`);
