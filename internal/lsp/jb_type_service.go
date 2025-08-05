@@ -21,6 +21,7 @@ var ProjectNotFoundError = errors.New("ProjectNotFoundError")
 var SourceFileNotFoundError = errors.New("SourceFileNotFoundError")
 
 // TODO handle project close/open to allow GC for collectingprojects
+var nextProjectId = 1
 var project2IdMap = make(map[*project.Project]int)
 var id2ProjectMap = make(map[int]*project.Project)
 var projectMapMutex = &sync.Mutex{}
@@ -38,7 +39,8 @@ func getProjectId(project *project.Project) int {
 	defer projectMapMutex.Unlock()
 	result, ok := project2IdMap[project]
 	if !ok {
-		result = len(project2IdMap) + 1
+		result = nextProjectId
+		nextProjectId++
 		project2IdMap[project] = result
 		id2ProjectMap[result] = project
 	}
@@ -66,6 +68,59 @@ func getProjectCache(projectId int, projectVersion int) *ProjectCache {
 		projectCacheMap[projectId] = result
 	}
 	return result
+}
+
+func CleanupProjectsCache(openedProjects []*project.Project) {
+	openedProjectsSet := collections.NewSetWithSizeHint[*project.Project](len(openedProjects))
+	for _, p := range openedProjects {
+		if p != nil {
+			openedProjectsSet.Add(p)
+		}
+	}
+
+	removedIds := cleanupProjectsCacheImpl(openedProjectsSet)
+
+	if removedIds.Len() > 0 && len(openedProjects) > 0 && openedProjects[0] != nil {
+		ids := make([]int, 0, removedIds.Len())
+		for id := range removedIds.Keys() {
+			ids = append(ids, id)
+		}
+		openedProjects[0].Logf("CleanupProjectsCache: removed project ids: %v", ids)
+	}
+}
+
+func cleanupProjectsCacheImpl(openedProjectsSet *collections.Set[*project.Project]) *collections.Set[int] {
+	projectMapMutex.Lock()
+	defer projectMapMutex.Unlock()
+
+	removedIds := collections.NewSetWithSizeHint[int](len(id2ProjectMap) + len(projectCacheMap))
+
+	for p := range project2IdMap {
+		if !openedProjectsSet.Has(p) {
+			delete(project2IdMap, p)
+		}
+	}
+
+	validProjectIdsSet := collections.NewSetWithSizeHint[int](len(project2IdMap))
+	for _, id := range project2IdMap {
+		validProjectIdsSet.Add(id)
+	}
+
+	for id := range id2ProjectMap {
+		if !validProjectIdsSet.Has(id) {
+			delete(id2ProjectMap, id)
+			removedIds.Add(id)
+		}
+	}
+
+	for id := range projectCacheMap {
+		if !validProjectIdsSet.Has(id) {
+			delete(projectCacheMap, id)
+			removedIds.Add(id)
+		}
+	}
+
+	return removedIds
 }
 
 func IdeGetTypeOfElement(

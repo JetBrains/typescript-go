@@ -57,6 +57,7 @@ func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto
 			s.jbSendResult(req.ID, result, err)
 		}
 	}
+	CleanupProjectsCache(s.projectService.Projects())
 	return nil
 }
 
