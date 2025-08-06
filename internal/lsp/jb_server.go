@@ -2,13 +2,14 @@ package lsp
 
 import (
 	"context"
+	"runtime/debug"
+
 	"github.com/microsoft/typescript-go/internal/collections"
 	"github.com/microsoft/typescript-go/internal/core"
 	"github.com/microsoft/typescript-go/internal/ls"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/project"
 	"github.com/microsoft/typescript-go/internal/tspath"
-	"runtime/debug"
 )
 
 func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto.RequestMessage) error {
