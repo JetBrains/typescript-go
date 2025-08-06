@@ -18,9 +18,12 @@ import (
 )
 
 var (
+	//nolint
 	OutdatedProjectVersionError = errors.New("OutdatedTypeCheckerIdException")
-	ProjectNotFoundError        = errors.New("ProjectNotFoundError")
-	SourceFileNotFoundError     = errors.New("SourceFileNotFoundError")
+	//nolint
+	ProjectNotFoundError = errors.New("ProjectNotFoundError")
+	//nolint
+	SourceFileNotFoundError = errors.New("SourceFileNotFoundError")
 )
 
 // TODO handle project close/open to allow GC for collectingprojects

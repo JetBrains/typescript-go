@@ -1,6 +1,7 @@
 package lsproto
 
 import (
+	//nolint
 	"encoding/json"
 	"fmt"
 )
