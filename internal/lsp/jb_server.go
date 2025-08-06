@@ -95,13 +95,13 @@ func (s *Server) GetProjectAndFileName(projectFileName *lsproto.DocumentUri, fil
 	return project, file
 }
 
-func (s *Server) jbSendResult(id *lsproto.ID, result *collections.OrderedMap[string, interface{}], error error) {
+func (s *Server) jbSendResult(id *lsproto.ID, result *collections.OrderedMap[string, interface{}], err error) {
 	response := make(map[string]interface{})
-	if error == nil {
+	if err == nil {
 		response["response"] = result
 	} else {
 		errorResponse := make(map[string]interface{})
-		errorResponse["error"] = error.Error()
+		errorResponse["error"] = err.Error()
 		response["response"] = errorResponse
 	}
 	s.sendResult(id, response)
