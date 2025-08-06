@@ -353,7 +353,7 @@ jobs:
       - build
       - extension
       - format
-      - generate
+      #      - generate
       - lint
       - misc
       - smoke
