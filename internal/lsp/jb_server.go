@@ -2,13 +2,14 @@ package lsp
 
 import (
 	"context"
+	"runtime/debug"
+
 	"github.com/microsoft/typescript-go/internal/collections"
 	"github.com/microsoft/typescript-go/internal/core"
 	"github.com/microsoft/typescript-go/internal/ls"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/project"
 	"github.com/microsoft/typescript-go/internal/tspath"
-	"runtime/debug"
 )
 
 func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto.RequestMessage) error {
@@ -94,13 +95,13 @@ func (s *Server) GetProjectAndFileName(projectFileName *lsproto.DocumentUri, fil
 	return project, file
 }
 
-func (s *Server) jbSendResult(id *lsproto.ID, result *collections.OrderedMap[string, interface{}], error error) {
+func (s *Server) jbSendResult(id *lsproto.ID, result *collections.OrderedMap[string, interface{}], err error) {
 	response := make(map[string]interface{})
-	if error == nil {
+	if err == nil {
 		response["response"] = result
 	} else {
 		errorResponse := make(map[string]interface{})
-		errorResponse["error"] = error.Error()
+		errorResponse["error"] = err.Error()
 		response["response"] = errorResponse
 	}
 	s.sendResult(id, response)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+
 	"github.com/microsoft/typescript-go/internal/ast"
 	"github.com/microsoft/typescript-go/internal/astnav"
 	"github.com/microsoft/typescript-go/internal/checker"
@@ -13,19 +15,25 @@ import (
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/project"
 	"github.com/microsoft/typescript-go/internal/scanner"
-	"sync"
 )
 
-var OutdatedProjectVersionError = errors.New("OutdatedTypeCheckerIdException")
-var ProjectNotFoundError = errors.New("ProjectNotFoundError")
-var SourceFileNotFoundError = errors.New("SourceFileNotFoundError")
+var (
+	//nolint
+	OutdatedProjectVersionError = errors.New("OutdatedTypeCheckerIdException")
+	//nolint
+	ProjectNotFoundError = errors.New("ProjectNotFoundError")
+	//nolint
+	SourceFileNotFoundError = errors.New("SourceFileNotFoundError")
+)
 
 // TODO handle project close/open to allow GC for collectingprojects
-var nextProjectId = 1
-var project2IdMap = make(map[*project.Project]int)
-var id2ProjectMap = make(map[int]*project.Project)
-var projectMapMutex = &sync.Mutex{}
-var projectCacheMap = make(map[int]*ProjectCache)
+var (
+	nextProjectId   = 1
+	project2IdMap   = make(map[*project.Project]int)
+	id2ProjectMap   = make(map[int]*project.Project)
+	projectMapMutex = &sync.Mutex{}
+	projectCacheMap = make(map[int]*ProjectCache)
+)
 
 type ProjectCache struct {
 	projectVersion   int
@@ -221,7 +229,6 @@ func getConvertContext(
 		done2()
 		done1()
 	}, nil
-
 }
 
 func IdeGetSymbolType(
@@ -418,7 +425,7 @@ func ConvertType(t *checker.Type, ctx *ConvertContext) *collections.OrderedMap[s
 		// Handle aliasTypeArguments
 		aliasType := t.Alias()
 		if aliasType != nil && aliasType.TypeArguments() != nil {
-			var aliasArgs = make([]interface{}, 0)
+			aliasArgs := make([]interface{}, 0)
 			for _, t := range aliasType.TypeArguments() {
 				aliasArgs = append(aliasArgs, ConvertType(t, ctx))
 			}
@@ -431,7 +438,7 @@ func ConvertType(t *checker.Type, ctx *ConvertContext) *collections.OrderedMap[s
 			}
 
 			if (t.ObjectFlags() & checker.ObjectFlagsReference) != 0 {
-				var resolvedArgs = make([]interface{}, 0)
+				resolvedArgs := make([]interface{}, 0)
 				typeArgs := ctx.checker.GetTypeArguments(t)
 				for _, t := range typeArgs {
 					// Filter out 'this' type
@@ -446,7 +453,7 @@ func ConvertType(t *checker.Type, ctx *ConvertContext) *collections.OrderedMap[s
 		// For UnionOrIntersection and TemplateLiteral types
 		if t.Flags()&(checker.TypeFlagsUnionOrIntersection|checker.TypeFlagsTemplateLiteral) != 0 {
 			typesArr := t.Types()
-			var types = make([]interface{}, 0)
+			types := make([]interface{}, 0)
 			for _, t := range typesArr {
 				types = append(types, ConvertType(t, ctx))
 			}
@@ -630,7 +637,7 @@ func getEnumQualifiedName(t *checker.Type) string {
 		return ""
 	}
 
-	var qName = ""
+	qName := ""
 	current := t.Symbol().Parent
 	for current != nil && !(current.ValueDeclaration != nil && ast.IsSourceFile(current.ValueDeclaration)) {
 		if qName == "" {
@@ -678,10 +685,9 @@ func ConvertSymbol(symbol *ast.Symbol, ctx *ConvertContext) *collections.Ordered
 		result.Set("escapedName", symbol.Name)
 
 		if symbol.Declarations != nil && len(symbol.Declarations) > 0 {
-			var declarations = make([]interface{}, 0)
+			declarations := make([]interface{}, 0)
 			for _, d := range symbol.Declarations {
 				declarations = append(declarations, ConvertNode(d, ctx))
-
 			}
 			result.Set("declarations", declarations)
 		}
@@ -728,46 +734,45 @@ func ConvertTypeProperties(t *checker.Type, ctx *ConvertContext) *collections.Or
 }
 
 func assignObjectTypeProperties(t *checker.ObjectType, ctx *ConvertContext, tscType *collections.OrderedMap[string, interface{}]) {
-	var constructSignatures = make([]interface{}, 0)
+	constructSignatures := make([]interface{}, 0)
 	for _, s := range ctx.checker.GetConstructSignatures(t.AsType()) {
 		constructSignatures = append(constructSignatures, ConvertSignature(s, ctx))
 	}
 	tscType.Set("constructSignatures", constructSignatures)
 
-	var callSignatures = make([]interface{}, 0)
+	callSignatures := make([]interface{}, 0)
 	for _, s := range ctx.checker.GetCallSignatures(t.AsType()) {
 		callSignatures = append(callSignatures, ConvertSignature(s, ctx))
 	}
 	tscType.Set("callSignatures", callSignatures)
 
-	var properties = make([]interface{}, 0)
+	properties := make([]interface{}, 0)
 	for _, p := range ctx.checker.GetPropertiesOfType(t.AsType()) {
 		properties = append(properties, ConvertSymbol(p, ctx))
 	}
 	tscType.Set("properties", properties)
 
-	var indexInfos = make([]interface{}, 0)
+	indexInfos := make([]interface{}, 0)
 	for _, info := range ctx.checker.GetIndexInfosOfType(t.AsType()) {
 		indexInfos = append(indexInfos, ConvertIndexInfo(info, ctx))
 	}
 	tscType.Set("indexInfos", indexInfos)
-
 }
 
 func assignUnionOrIntersectionTypeProperties(t *checker.UnionOrIntersectionType, ctx *ConvertContext, tscType *collections.OrderedMap[string, interface{}]) {
-	var resolvedProperties = make([]interface{}, 0)
+	resolvedProperties := make([]interface{}, 0)
 	for _, p := range ctx.checker.GetPropertiesOfType(t.AsType()) {
 		resolvedProperties = append(resolvedProperties, ConvertSymbol(p, ctx))
 	}
 	tscType.Set("resolvedProperties", resolvedProperties)
 
-	var callSignatures = make([]interface{}, 0)
+	callSignatures := make([]interface{}, 0)
 	for _, s := range ctx.checker.GetCallSignatures(t.AsType()) {
 		callSignatures = append(callSignatures, ConvertSignature(s, ctx))
 	}
 	tscType.Set("callSignatures", callSignatures)
 
-	var constructSignatures = make([]interface{}, 0)
+	constructSignatures := make([]interface{}, 0)
 	for _, s := range ctx.checker.GetConstructSignatures(t.AsType()) {
 		constructSignatures = append(constructSignatures, ConvertSignature(s, ctx))
 	}
@@ -800,7 +805,7 @@ func ConvertSignature(signature *checker.Signature, ctx *ConvertContext) *collec
 			result.Set("resolvedReturnType", ConvertType(returnType, ctx))
 		}
 
-		var parameters = make([]interface{}, 0)
+		parameters := make([]interface{}, 0)
 		for _, param := range signature.Parameters() {
 			parameters = append(parameters, ConvertSymbol(param, ctx))
 		}
