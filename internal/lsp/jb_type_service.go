@@ -26,7 +26,6 @@ var (
 	SourceFileNotFoundError = errors.New("SourceFileNotFoundError")
 )
 
-// TODO handle project close/open to allow GC for collectingprojects
 var (
 	nextProjectId   = 1
 	project2IdMap   = make(map[*project.Project]int)
