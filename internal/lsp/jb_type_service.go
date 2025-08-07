@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/microsoft/typescript-go/internal/ast"
@@ -681,7 +682,11 @@ func ConvertSymbol(symbol *ast.Symbol, ctx *ConvertContext) *collections.Ordered
 		result.Set("ideObjectId", ideObjectId)
 		result.Set("ideObjectType", "SymbolObject")
 		result.Set("flags", convertSymbolFlags(symbol.Flags))
-		result.Set("escapedName", symbol.Name)
+		escapedName := symbol.Name
+		if strings.Contains(escapedName, ast.InternalSymbolNamePrefix) {
+			escapedName = strings.ReplaceAll(escapedName, ast.InternalSymbolNamePrefix, "__")
+		}
+		result.Set("escapedName", escapedName)
 
 		if symbol.Declarations != nil && len(symbol.Declarations) > 0 {
 			declarations := make([]interface{}, 0)
