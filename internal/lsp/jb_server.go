@@ -58,41 +58,46 @@ func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto
 			s.jbSendResult(req.ID, result, err)
 		}
 	}
-	CleanupProjectsCache(s.projectService.Projects())
+	CleanupProjectsCache(append(s.projectService.Projects(), GetAllSelfManagedProjects()...))
 	return nil
 }
 
-func (s *Server) GetProjectAndFileName(projectFileName *lsproto.DocumentUri, fileUri lsproto.DocumentUri) (*project.Project, string) {
-	var project *project.Project
+func (s *Server) GetProjectAndFileName(projectFileNameUri *lsproto.DocumentUri, fileUri lsproto.DocumentUri) (*project.Project, string) {
+	var proj *project.Project = nil
 	file := ls.DocumentURIToFileName(fileUri)
 
-	if projectFileName != nil {
-		projectFileName := ls.DocumentURIToFileName(*projectFileName)
-		project = s.projectService.FindOrCreateConfiguredProject(projectFileName, true)
-		if project.GetProgram().GetSourceFile(file) == nil {
-			// load a default project for the file
-			project = nil
+	if projectFileNameUri != nil {
+		projectFileName := ls.DocumentURIToFileName(*projectFileNameUri)
+
+		for _, p := range s.projectService.Projects() {
+			if p.Name() == projectFileName && p.GetProgram().GetSourceFile(file) != nil {
+				return p, file
+			}
+		}
+
+		if p := GetSelfManagedProjectForFile(s, projectFileName, file); p != nil {
+			return p, file
 		}
 	}
 
-	if project == nil {
-		canonicalFileName := tspath.GetCanonicalFileName(file, s.projectService.FS().UseCaseSensitiveFileNames())
-		scriptInfo := s.projectService.DocumentStore().GetScriptInfoByPath(tspath.Path(canonicalFileName))
-		if scriptInfo != nil {
-			return scriptInfo.ContainingProjects()[0], file
-		}
-
-		fileContents, ok := s.projectService.FS().ReadFile(file)
-		if !ok {
-			panic("Failed to read " + file)
-		}
-		scriptKind := core.GetScriptKindFromFileName(file)
-		// TODO - handle list of automatically opened files and close them automatically as well
-		s.projectService.OpenFile(file, fileContents, scriptKind, file)
-		_, project = s.projectService.EnsureDefaultProjectForFile(file)
+	// Some other project, if exists
+	canonicalFileName := tspath.GetCanonicalFileName(file, s.projectService.FS().UseCaseSensitiveFileNames())
+	scriptInfo := s.projectService.DocumentStore().GetScriptInfoByPath(tspath.Path(canonicalFileName))
+	if scriptInfo != nil {
+		return scriptInfo.ContainingProjects()[0], file
 	}
 
-	return project, file
+	// Default project - may be inferred
+	// TODO - handle list of automatically opened files and close them automatically as well
+	fileContents, ok := s.projectService.FS().ReadFile(file)
+	if !ok {
+		panic("Failed to read " + file)
+	}
+	scriptKind := core.GetScriptKindFromFileName(file)
+	s.projectService.OpenFile(file, fileContents, scriptKind, file)
+	_, proj = s.projectService.EnsureDefaultProjectForFile(file)
+
+	return proj, file
 }
 
 func (s *Server) jbSendResult(id *lsproto.ID, result *collections.OrderedMap[string, interface{}], err error) {

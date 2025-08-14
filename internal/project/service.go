@@ -461,32 +461,6 @@ func (s *Service) assignProjectToOpenedScriptInfo(info *ScriptInfo) *openScriptI
 	return result
 }
 
-func (s *Service) FindOrCreateConfiguredProject(configFileName string, includeDeferredClosedProjects bool) *Project {
-	return s.defaultProjectFinder.findOrCreateProject(configFileName, s.toPath(configFileName), projectLoadKindCreate)
-	// Below is the original implementation from the prototype
-	// return s.findCreateOrReloadConfiguredProject(configFileName, projectLoadKindCreate, includeDeferredClosedProjects)
-}
-
-// func (s *Service) findCreateOrReloadConfiguredProject(configFileName string, projectLoadKind projectLoadKind, includeDeferredClosedProjects bool) *Project {
-// 	// !!! many such things omitted
-// 	configFilePath := s.toPath(configFileName)
-// 	project := s.findConfiguredProjectByName(configFilePath, includeDeferredClosedProjects)
-// 	switch projectLoadKind {
-// 	case projectLoadKindFind, projectLoadKindCreateReplay:
-// 		return project
-// 	case projectLoadKindCreate, projectLoadKindReload:
-// 		if project == nil {
-// 			project = s.createConfiguredProject(configFileName, configFilePath)
-// 		}
-// 		if projectLoadKind == projectLoadKindReload || project.compilerOptions == nil {
-// 			s.loadConfiguredProject(project)
-// 		}
-// 	default:
-// 		panic("unhandled projectLoadKind")
-// 	}
-// 	return project
-// }
-
 func (s *Service) cleanupProjectsAndScriptInfos(openInfo *ScriptInfo, retainedByOpenFile *openScriptInfoProjectResult) {
 	// This was postponed from closeOpenFile to after opening next file,
 	// so that we can reuse the project if we need to right away
