@@ -189,7 +189,7 @@ export const lib = task({
 function buildTsgo(opts) {
     opts ||= {};
     const out = opts.out ?? "./built/local/";
-    return $({ cancelSignal: opts.abortSignal, env: opts.env })`go build ${goBuildFlags} ${opts.extraFlags ?? []} ${goBuildTags("noembed")} -o ${out} ./cmd/tsgo`;
+    return $({ cancelSignal: opts.abortSignal, env: opts.env })`go build ${goBuildFlags} ${opts.extraFlags ?? []} ${options.debug ? goBuildTags("noembed") : goBuildTags("noembed", "release")} -o ${out} ./cmd/tsgo`;
 }
 
 export const tsgoBuild = task({
@@ -474,16 +474,6 @@ export const checkFormat = task({
     name: "check:format",
     run: async () => {
         await $`dprint check`;
-    },
-});
-
-export const postinstall = task({
-    name: "postinstall",
-    hiddenFromTaskList: true,
-    run: () => {
-        // Ensure the go command doesn't waste time looking into node_modules.
-        // Remove once https://github.com/golang/go/issues/42965 is fixed.
-        fs.writeFileSync(path.join(__dirname, "node_modules", "go.mod"), `module example.org/ignoreme\n`);
     },
 });
 

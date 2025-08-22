@@ -12,6 +12,7 @@ import (
 	"github.com/microsoft/typescript-go/internal/checker"
 	"github.com/microsoft/typescript-go/internal/collections"
 	"github.com/microsoft/typescript-go/internal/core"
+	"github.com/microsoft/typescript-go/internal/debug"
 	"github.com/microsoft/typescript-go/internal/jsnum"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/lsutil"
@@ -119,10 +120,7 @@ func getLocalSymbolForExportSpecifier(referenceLocation *ast.Identifier, referen
 }
 
 func isExportSpecifierAlias(referenceLocation *ast.Identifier, exportSpecifier *ast.ExportSpecifier) bool {
-	// Debug.assert(exportSpecifier.PropertyName == referenceLocation || exportSpecifier.Name == referenceLocation);
-	if !(exportSpecifier.PropertyName == referenceLocation.AsNode() || exportSpecifier.Name() == referenceLocation.AsNode()) {
-		panic("referenceLocation is not export specifier name or property name")
-	}
+	debug.Assert(exportSpecifier.PropertyName == referenceLocation.AsNode() || exportSpecifier.Name() == referenceLocation.AsNode(), "referenceLocation is not export specifier name or property name")
 	propertyName := exportSpecifier.PropertyName
 	if propertyName != nil {
 		// Given `export { foo as bar } [from "someModule"]`: It's an alias at `foo`, but at `bar` it's a new symbol.
@@ -438,6 +436,9 @@ func probablyUsesSemicolons(file *ast.SourceFile) bool {
 
 	var visit func(node *ast.Node) bool
 	visit = func(node *ast.Node) bool {
+		if node.Flags&ast.NodeFlagsReparsed != 0 {
+			return false
+		}
 		if lsutil.SyntaxRequiresTrailingSemicolonOrASI(node.Kind) {
 			lastToken := lsutil.GetLastToken(node, file)
 			if lastToken != nil && lastToken.Kind == ast.KindSemicolonToken {
@@ -1614,18 +1615,7 @@ func findContainingList(node *ast.Node, file *ast.SourceFile) *ast.NodeList {
 		}
 		return nodes
 	}
-	nodeVisitor := ast.NewNodeVisitor(core.Identity, nil, ast.NodeVisitorHooks{
-		VisitNode:  visitNode,
-		VisitToken: visitNode,
-		VisitNodes: visitNodes,
-		VisitModifiers: func(modifiers *ast.ModifierList, visitor *ast.NodeVisitor) *ast.ModifierList {
-			if modifiers != nil {
-				visitNodes(&modifiers.NodeList, visitor)
-			}
-			return modifiers
-		},
-	})
-	astnav.VisitEachChildAndJSDoc(node.Parent, file, nodeVisitor)
+	astnav.VisitEachChildAndJSDoc(node.Parent, file, visitNode, visitNodes)
 	return list
 }
 
@@ -1634,4 +1624,38 @@ func getLeadingCommentRangesOfNode(node *ast.Node, file *ast.SourceFile) iter.Se
 		return nil
 	}
 	return scanner.GetLeadingCommentRanges(&ast.NodeFactory{}, file.Text(), node.Pos())
+}
+
+// Equivalent to Strada's `node.getChildren()` for non-JSDoc nodes.
+func getChildrenFromNonJSDocNode(node *ast.Node, sourceFile *ast.SourceFile) []*ast.Node {
+	var childNodes []*ast.Node
+	node.ForEachChild(func(child *ast.Node) bool {
+		childNodes = append(childNodes, child)
+		return false
+	})
+	var children []*ast.Node
+	pos := node.Pos()
+	for _, child := range childNodes {
+		scanner := scanner.GetScannerForSourceFile(sourceFile, pos)
+		for pos < child.Pos() {
+			token := scanner.Token()
+			tokenFullStart := scanner.TokenFullStart()
+			tokenEnd := scanner.TokenEnd()
+			children = append(children, sourceFile.GetOrCreateToken(token, tokenFullStart, tokenEnd, node))
+			pos = tokenEnd
+			scanner.Scan()
+		}
+		children = append(children, child)
+		pos = child.End()
+	}
+	scanner := scanner.GetScannerForSourceFile(sourceFile, pos)
+	for pos < node.End() {
+		token := scanner.Token()
+		tokenFullStart := scanner.TokenFullStart()
+		tokenEnd := scanner.TokenEnd()
+		children = append(children, sourceFile.GetOrCreateToken(token, tokenFullStart, tokenEnd, node))
+		pos = tokenEnd
+		scanner.Scan()
+	}
+	return children
 }
