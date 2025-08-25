@@ -15,6 +15,7 @@ import (
 	"github.com/microsoft/typescript-go/internal/ls"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/project"
+	"github.com/microsoft/typescript-go/internal/project/logging"
 	"github.com/microsoft/typescript-go/internal/scanner"
 )
 
@@ -36,7 +37,7 @@ var (
 )
 
 type ProjectCache struct {
-	projectVersion   int
+	projectVersion   uint64
 	requestedTypeIds *collections.Set[checker.TypeId]
 	seenTypeIds      map[checker.TypeId]*checker.Type
 	seenSymbolIds    map[ast.SymbolId]*ast.Symbol
@@ -62,7 +63,7 @@ func getProject(projectId int) (*project.Project, bool) {
 	return id, ok
 }
 
-func getProjectCache(projectId int, projectVersion int) *ProjectCache {
+func getProjectCache(projectId int, projectVersion uint64) *ProjectCache {
 	projectMapMutex.Lock()
 	defer projectMapMutex.Unlock()
 	result, ok := projectCacheMap[projectId]
@@ -78,7 +79,7 @@ func getProjectCache(projectId int, projectVersion int) *ProjectCache {
 	return result
 }
 
-func CleanupProjectsCache(openedProjects []*project.Project) {
+func CleanupProjectsCache(openedProjects []*project.Project, logger logging.Logger) {
 	openedProjectsSet := collections.NewSetWithSizeHint[*project.Project](len(openedProjects))
 	for _, p := range openedProjects {
 		if p != nil {
@@ -93,7 +94,7 @@ func CleanupProjectsCache(openedProjects []*project.Project) {
 		for id := range removedIds.Keys() {
 			ids = append(ids, id)
 		}
-		openedProjects[0].Logf("CleanupProjectsCache: removed project ids: %v", ids)
+		logger.Logf("CleanupProjectsCache: removed project ids: %v", ids)
 	}
 }
 
@@ -140,10 +141,8 @@ func IdeGetTypeOfElement(
 	typeRequestKind lsproto.TypeRequestKind,
 ) (*collections.OrderedMap[string, interface{}], error) {
 	projectIdNum := getProjectId(project)
-	projectVersion := project.Version() // TODO: possible race condition here
-	languageService, done := project.GetLanguageServiceForRequest(ctx)
-	defer done()
-	program := languageService.GetProgram()
+	projectVersion := project.ProgramLastUpdate // TODO: possible race condition here
+	program := project.GetProgram()
 	sourceFile := program.GetSourceFile(fileName)
 	if sourceFile == nil {
 		return nil, SourceFileNotFoundError
@@ -213,28 +212,26 @@ func IdeGetTypeOfElement(
 func getConvertContext(
 	ctx context.Context,
 	projectId int,
-	projectVersion int,
+	projectVersion uint64,
 ) (*ConvertContext, func(), error) {
 	project, ok := getProject(projectId)
 	if !ok {
 		return nil, func() {}, ProjectNotFoundError
 	}
 
-	if projectVersion != project.Version() {
+	if projectVersion != project.ProgramLastUpdate {
 		return nil, func() {}, OutdatedProjectVersionError
 	}
-	languageService, done1 := project.GetLanguageServiceForRequest(ctx)
-	checker, done2 := languageService.GetProgram().GetTypeChecker(ctx)
+	checker, done := project.GetProgram().GetTypeChecker(ctx)
 	return NewConvertContext(checker, projectId, projectVersion), func() {
-		done2()
-		done1()
+		done()
 	}, nil
 }
 
 func IdeGetSymbolType(
 	ctx context.Context,
 	projectId int,
-	projectVersion int,
+	projectVersion uint64,
 	symbolId int,
 ) (*collections.OrderedMap[string, interface{}], error) {
 	convertContext, done, err := getConvertContext(ctx, projectId, projectVersion)
@@ -258,7 +255,7 @@ func IdeGetSymbolType(
 func IdeGetTypeProperties(
 	ctx context.Context,
 	projectId int,
-	projectVersion int,
+	projectVersion uint64,
 	typeId int,
 ) (*collections.OrderedMap[string, interface{}], error) {
 	convertContext, done, err := getConvertContext(ctx, projectId, projectVersion)
@@ -281,7 +278,7 @@ func IdeGetTypeProperties(
 func AreTypesMutuallyAssignable(
 	ctx context.Context,
 	projectId int,
-	projectVersion int,
+	projectVersion uint64,
 	type1Id int,
 	type2Id int,
 ) (*collections.OrderedMap[string, interface{}], error) {
@@ -318,10 +315,8 @@ func GetResolvedSignature(
 	Range lsproto.Range,
 ) (*collections.OrderedMap[string, interface{}], error) {
 	projectId := getProjectId(project)
-	projectVersion := project.Version()
-	languageService, done := project.GetLanguageServiceForRequest(ctx)
-	defer done()
-	program := languageService.GetProgram()
+	projectVersion := project.ProgramLastUpdate
+	program := project.Program
 	sourceFile := program.GetSourceFile(fileName)
 	if sourceFile == nil {
 		return nil, SourceFileNotFoundError
@@ -376,7 +371,7 @@ type ConvertContext struct {
 	seenSymbolIds        map[ast.SymbolId]*ast.Symbol
 }
 
-func NewConvertContext(checker *checker.Checker, projectId int, projectVersion int) *ConvertContext {
+func NewConvertContext(checker *checker.Checker, projectId int, projectVersion uint64) *ConvertContext {
 	cache := getProjectCache(projectId, projectVersion)
 	return &ConvertContext{
 		nextId:               0,

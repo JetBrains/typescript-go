@@ -5,11 +5,8 @@ import (
 	"runtime/debug"
 
 	"github.com/microsoft/typescript-go/internal/collections"
-	"github.com/microsoft/typescript-go/internal/core"
-	"github.com/microsoft/typescript-go/internal/ls"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/project"
-	"github.com/microsoft/typescript-go/internal/tspath"
 )
 
 func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto.RequestMessage) error {
@@ -26,78 +23,121 @@ func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto
 	case lsproto.IdeCommandGetElementType:
 		{
 			args := params.Arguments.(*lsproto.GetElementTypeArguments)
-			project, file := s.GetProjectAndFileName(args.ProjectFileName, args.File)
+			project, file := s.GetProjectAndFileName(args.ProjectFileName, args.File, ctx)
 			element, err := IdeGetTypeOfElement(ctx, project, file, &args.Range, args.ForceReturnType, args.TypeRequestKind)
 			s.jbSendResult(req.ID, element, err)
 		}
 	case lsproto.IdeCommandGetSymbolType:
 		{
 			args := params.Arguments.(*lsproto.GetSymbolTypeArguments)
-			symbolType, err := IdeGetSymbolType(ctx, args.IdeProjectId, args.IdeTypeCheckerId, args.SymbolId)
+			symbolType, err := IdeGetSymbolType(ctx, args.IdeProjectId, uint64(args.IdeTypeCheckerId), args.SymbolId)
 			s.jbSendResult(req.ID, symbolType, err)
 		}
 	case lsproto.IdeCommandGetTypeProperties:
 		{
 			args := params.Arguments.(*lsproto.GetTypePropertiesArguments)
-			typeProperties, err := IdeGetTypeProperties(ctx, args.IdeProjectId, args.IdeTypeCheckerId, args.TypeId)
+			typeProperties, err := IdeGetTypeProperties(ctx, args.IdeProjectId, uint64(args.IdeTypeCheckerId), args.TypeId)
 			s.jbSendResult(req.ID, typeProperties, err)
 		}
 
 	case lsproto.IdeAreTypesMutuallyAssignable:
 		{
 			args := params.Arguments.(*lsproto.AreTypesMutuallyAssignableArguments)
-			result, err := AreTypesMutuallyAssignable(ctx, args.IdeProjectId, args.IdeTypeCheckerId, args.Type1Id, args.Type2Id)
+			result, err := AreTypesMutuallyAssignable(ctx, args.IdeProjectId, uint64(args.IdeTypeCheckerId), args.Type1Id, args.Type2Id)
 			s.jbSendResult(req.ID, result, err)
 		}
 	case lsproto.IdeGetResolvedSignature:
 		{
 			args := params.Arguments.(*lsproto.GetResolvedSignatureArguments)
-			project, file := s.GetProjectAndFileName(args.ProjectFileName, args.File)
+			project, file := s.GetProjectAndFileName(args.ProjectFileName, args.File, ctx)
 
 			result, err := GetResolvedSignature(ctx, project, file, args.Range)
 			s.jbSendResult(req.ID, result, err)
 		}
 	}
-	CleanupProjectsCache(append(s.projectService.Projects(), GetAllSelfManagedProjects()...))
+	snapshot, release := s.session.Snapshot()
+	defer release()
+
+	CleanupProjectsCache(append(snapshot.ProjectCollection.Projects(), GetAllSelfManagedProjects(s, ctx)...), s.logger)
 	return nil
 }
 
-func (s *Server) GetProjectAndFileName(projectFileNameUri *lsproto.DocumentUri, fileUri lsproto.DocumentUri) (*project.Project, string) {
-	var proj *project.Project = nil
-	file := ls.DocumentURIToFileName(fileUri)
+func (s *Server) GetProjectAndFileName(
+	projectFileNameUri *lsproto.DocumentUri,
+	fileUri lsproto.DocumentUri,
+	ctx context.Context,
+) (*project.Project, string) {
+	file := fileUri.FileName()
+
+	snapshot, release := s.session.Snapshot()
+	released := false
+	releaseOnce := func() {
+		if !released {
+			release()
+			released = true
+		}
+	}
+	defer releaseOnce()
 
 	if projectFileNameUri != nil {
-		projectFileName := ls.DocumentURIToFileName(*projectFileNameUri)
+		projectFileName := projectFileNameUri.FileName()
 
-		for _, p := range s.projectService.Projects() {
+		if IsSelfManagedProject(projectFileName) {
+			if p := GetOrCreateSelfManagedProjectForFile(s, projectFileName, file, ctx); p != nil {
+				return p, file
+			}
+		}
+
+		for _, p := range snapshot.ProjectCollection.Projects() {
 			if p.Name() == projectFileName && p.GetProgram().GetSourceFile(file) != nil {
 				return p, file
 			}
 		}
 
-		if p := GetSelfManagedProjectForFile(s, projectFileName, file); p != nil {
+		if p := GetOrCreateSelfManagedProjectForFile(s, projectFileName, file, ctx); p != nil {
 			return p, file
 		}
 	}
 
-	// Some other project, if exists
-	canonicalFileName := tspath.GetCanonicalFileName(file, s.projectService.FS().UseCaseSensitiveFileNames())
-	scriptInfo := s.projectService.DocumentStore().GetScriptInfoByPath(tspath.Path(canonicalFileName))
-	if scriptInfo != nil {
-		return scriptInfo.ContainingProjects()[0], file
+	if p := snapshot.GetDefaultProject(fileUri); p != nil {
+		return p, file
 	}
 
-	// Default project - may be inferred
-	// TODO - handle list of automatically opened files and close them automatically as well
-	fileContents, ok := s.projectService.FS().ReadFile(file)
-	if !ok {
-		panic("Failed to read " + file)
-	}
-	scriptKind := core.GetScriptKindFromFileName(file)
-	s.projectService.OpenFile(file, fileContents, scriptKind, file)
-	_, proj = s.projectService.EnsureDefaultProjectForFile(file)
+	releaseOnce()
 
-	return proj, file
+	if _, err := s.session.GetLanguageService(ctx, fileUri); err == nil {
+		// Get a fresh snapshot since GetLanguageService may have updated it
+		newSnapshot, release := s.session.Snapshot()
+		defer release()
+		if p := newSnapshot.GetDefaultProject(fileUri); p != nil {
+			return p, file
+		}
+	}
+
+	// No project found
+	return nil, file
+
+	/*
+		// Unstable API, skip so far
+
+		canonicalFileName := tspath.GetCanonicalFileName(file, s.projectService.FS().UseCaseSensitiveFileNames())
+		scriptInfo := s.projectService.DocumentStore().GetScriptInfoByPath(tspath.Path(canonicalFileName))
+		if scriptInfo != nil {
+			return scriptInfo.ContainingProjects()[0], file
+		}
+
+		// Default project - may be inferred
+		// TODO - handle list of automatically opened files and close them automatically as well
+		fileContents, ok := s.projectService.FS().ReadFile(file)
+		if !ok {
+			panic("Failed to read " + file)
+		}
+		scriptKind := core.GetScriptKindFromFileName(file)
+		s.projectService.OpenFile(file, fileContents, scriptKind, file)
+		_, proj = s.projectService.EnsureDefaultProjectForFile(file)
+
+		return proj, file
+	*/
 }
 
 func (s *Server) jbSendResult(id *lsproto.ID, result *collections.OrderedMap[string, interface{}], err error) {

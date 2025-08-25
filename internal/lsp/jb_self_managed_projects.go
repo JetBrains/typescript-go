@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -18,8 +19,8 @@ var (
 	projectInfoByName = make(map[string]*SelfManagedProjectInfo)
 )
 
-func GetAllSelfManagedProjects() []*project.Project {
-	cleanupStaleProjects()
+func GetAllSelfManagedProjects(s *Server, ctx context.Context) []*project.Project {
+	cleanupStaleProjects(s, ctx)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -31,12 +32,18 @@ func GetAllSelfManagedProjects() []*project.Project {
 	return projects
 }
 
-func GetSelfManagedProjectForFile(s *Server, projectFileName string, file string) *project.Project {
-	defer cleanupStaleProjects()
-	return getProjectForFileImpl(s, projectFileName, file)
+func IsSelfManagedProject(projectFileName string) bool {
+	mu.Lock()
+	defer mu.Unlock()
+	return projectInfoByName[projectFileName] != nil
 }
 
-func getProjectForFileImpl(s *Server, projectFileName string, file string) *project.Project {
+func GetOrCreateSelfManagedProjectForFile(s *Server, projectFileName string, file string, ctx context.Context) *project.Project {
+	defer cleanupStaleProjects(s, ctx)
+	return getProjectForFileImpl(s, projectFileName, file, ctx)
+}
+
+func getProjectForFileImpl(s *Server, projectFileName string, file string, ctx context.Context) *project.Project {
 	nowMs := time.Now().UnixMilli()
 	fileMod := getFileModTimeMs(s, file)
 
@@ -50,11 +57,11 @@ func getProjectForFileImpl(s *Server, projectFileName string, file string) *proj
 			return info.Project
 		}
 
-		info.Project.Close()
+		closeProject(s, projectFileName, ctx)
 		delete(projectInfoByName, projectFileName)
 	}
 
-	newProject := createNewSelfManagedProject(s, projectFileName, file)
+	newProject := createNewSelfManagedProject(s, projectFileName, file, ctx)
 	if newProject == nil {
 		return nil
 	}
@@ -70,7 +77,7 @@ func getProjectForFileImpl(s *Server, projectFileName string, file string) *proj
 	return newProject
 }
 
-func cleanupStaleProjects() {
+func cleanupStaleProjects(s *Server, ctx context.Context) {
 	nowMs := time.Now().UnixMilli()
 	const ttl = int64(5 * time.Minute / time.Millisecond)
 
@@ -79,34 +86,39 @@ func cleanupStaleProjects() {
 
 	for name, info := range projectInfoByName {
 		if nowMs-info.LastAccessed > ttl {
-			info.Project.Close()
+			closeProject(s, name, ctx)
 			delete(projectInfoByName, name)
 		}
 	}
 }
 
 func getFileModTimeMs(s *Server, file string) int64 {
-	if !s.FS().FileExists(file) {
+	if !s.fs.FileExists(file) {
 		return 0
 	}
-	fi := s.FS().Stat(file)
+	fi := s.fs.Stat(file)
 	if fi == nil {
 		return 0
 	}
 	return fi.ModTime().UnixMilli()
 }
 
-func createNewSelfManagedProject(s *Server, projectFileName string, file string) *project.Project {
-	p := project.NewConfiguredProject(projectFileName, s.projectService.ToPath(projectFileName), s.projectService)
-	if p.GetProgram().GetSourceFile(file) == nil {
-		s.Log("Project: ", projectFileName, " doesn't contain the file: ", file)
-		return nil
+func createNewSelfManagedProject(s *Server, projectFileName string, file string, ctx context.Context) *project.Project {
+	var p *project.Project
+	var err error
+
+	if p, err = s.session.OpenProject(ctx, projectFileName); err == nil && p != nil {
+		if p.GetProgram() != nil && p.GetProgram().GetSourceFile(file) != nil {
+			return p
+		}
 	}
 
-	if err := p.LoadConfig(); err != nil {
-		s.Log("Could not load configured project:", projectFileName, err)
-		return nil
-	}
+	return nil
+}
 
-	return p
+func closeProject(s *Server, projectFileName string, ctx context.Context) {
+	err := s.session.CloseProject(ctx, projectFileName)
+	if err != nil {
+		s.logger.Log("SelfManagedProjects:: Error closing project " + projectFileName + ": " + err.Error())
+	}
 }
