@@ -25,7 +25,9 @@ var (
 	//nolint
 	ProjectNotFoundError = errors.New("ProjectNotFoundError")
 	//nolint
-	SourceFileNotFoundError = errors.New("SourceFileNotFoundError")
+	// SourceFileNotFoundError = errors.New("SourceFileNotFoundError")
+	// TODO When sourceFile not found, we're returning nil just like in former WS next
+	// TODO However it probably should be handled
 )
 
 var (
@@ -145,7 +147,7 @@ func IdeGetTypeOfElement(
 	program := project.GetProgram()
 	sourceFile := program.GetSourceFile(fileName)
 	if sourceFile == nil {
-		return nil, SourceFileNotFoundError
+		return nil, nil
 	}
 
 	startOffset := scanner.GetPositionOfLineAndCharacter(sourceFile, int(Range.Start.Line), int(Range.Start.Character))
@@ -319,7 +321,7 @@ func GetResolvedSignature(
 	program := project.Program
 	sourceFile := program.GetSourceFile(fileName)
 	if sourceFile == nil {
-		return nil, SourceFileNotFoundError
+		return nil, nil
 	}
 
 	startOffset := scanner.GetPositionOfLineAndCharacter(sourceFile, int(Range.Start.Line), int(Range.Start.Character))
