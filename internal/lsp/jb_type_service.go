@@ -277,6 +277,32 @@ func IdeGetTypeProperties(
 	return result, nil
 }
 
+func IdeGetTypeProperty(
+	ctx context.Context,
+	projectId int,
+	projectVersion uint64,
+	typeId int,
+	propertyName string,
+) (*collections.OrderedMap[string, interface{}], error) {
+	convertContext, done, err := getConvertContext(ctx, projectId, projectVersion)
+	defer done()
+	if err != nil {
+		return nil, err
+	}
+
+	t, exists := convertContext.seenTypeIds[checker.TypeId(typeId)]
+	if !exists {
+		return nil, errors.New("type not found")
+	}
+
+	symbol := convertContext.checker.GetPropertyOfType(t, propertyName)
+	if symbol == nil {
+		return nil, nil
+	}
+	result := ConvertSymbol(symbol, convertContext)
+	return result, nil
+}
+
 func AreTypesMutuallyAssignable(
 	ctx context.Context,
 	projectId int,
