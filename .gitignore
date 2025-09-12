@@ -191,8 +191,6 @@ custom-gcl.hash
 # macOS Finder metadata
 .DS_Store
 
-.idea
-
 !testdata/submoduleAccepted.txt
 
 !NOTICE.txt
