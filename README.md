@@ -127,3 +127,12 @@ trademarks or logos is subject to and must follow
 [Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/legal/intellectualproperty/trademarks/usage/general).
 Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
 Any use of third-party trademarks or logos are subject to those third-party's policies.
+
+## Disclaimer
+This project is an unofficial fork maintained by JetBrains.
+
+"TypeScript" is a trademark of Microsoft Corporation.
+
+"Go" and the Gopher logo are trademarks of Google LLC.
+
+All other trademarks and service marks are the property of their respective owners. Use of these names is solely for identification and descriptive purposes. This project is not affiliated with, endorsed by, or sponsored by Microsoft Corporation, Google LLC, or any other party
