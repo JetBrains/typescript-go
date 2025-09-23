@@ -1,3 +1,4 @@
+// MODIFIED IN THIS FORK: 2025-09-23 Aleksei Berezkin cde8066b5b710554e803ad957200451cea7a3053 Script to write modification notice
 import assert from 'node:assert'
 import child_process from 'node:child_process'
 import fs from 'fs'

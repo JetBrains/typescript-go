@@ -1,3 +1,5 @@
+// MODIFIED IN THIS FORK: 2025-05-27 Piotr Tomiak 1bf5d43a77c728148f273b555d20220cc5ac6ef8 Ensure that a broken handle method does not prevent server from functioning.
+// MODIFIED IN THIS FORK: 2025-05-21 Piotr Tomiak dfd337df3e64d6fb2bc18c46bf4de05bcbea5a64 Support WebStorm types in LSP mode
 package lsp
 
 import (

@@ -1,3 +1,6 @@
+// MODIFIED IN THIS FORK: 2025-09-12 Konstantin Ulitin e3893948a2061ee66b3bc9e3df22590aba344872 support ideGetTypeProperty command
+// MODIFIED IN THIS FORK: 2025-07-24 Aleksei Berezkin 5567c01219bf93fad344a80691da5df021923d10 WEB-74070 Supported the method IdeGetResolvedSignature
+// MODIFIED IN THIS FORK: 2025-05-21 Piotr Tomiak dfd337df3e64d6fb2bc18c46bf4de05bcbea5a64 Support WebStorm types in LSP mode
 package lsproto
 
 import (

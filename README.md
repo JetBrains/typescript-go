@@ -1,3 +1,4 @@
+`MODIFIED IN THIS FORK: 2025-09-23 Vladislav Minaev bafe7feb5b336b7e919dde1355a3796969096eb1 add non-endorsement disclaimer`
 # TypeScript 7
 
 [Not sure what this is? Read the announcement post!](https://devblogs.microsoft.com/typescript/typescript-native-port/)

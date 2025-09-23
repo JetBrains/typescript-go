@@ -1,3 +1,4 @@
+// MODIFIED IN THIS FORK: 2025-07-28 Aleksei Berezkin 95e87ac8f7844ecff1abac59532705a779638076 WEB-74070 Supported custom defaultLibraryPath
 package main
 
 import (

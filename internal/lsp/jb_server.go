@@ -1,3 +1,10 @@
+// MODIFIED IN THIS FORK: 2025-09-12 Konstantin Ulitin e3893948a2061ee66b3bc9e3df22590aba344872 support ideGetTypeProperty command
+// MODIFIED IN THIS FORK: 2025-08-25 Aleksei Berezkin 8aa1bd88535b085be08c607ccbecbe4e6fbfeeea Fixed fork after refactoring in upstream
+// MODIFIED IN THIS FORK: 2025-08-14 Aleksei Berezkin 57b2402e912f23f4a1345039460fac83895ce6c8 WEB-74070 Migrated away from private defaultProjectFinder.findOrCreateProject
+// MODIFIED IN THIS FORK: 2025-08-05 Aleksei Berezkin a9368494725330485924ed5ff3db447110dab0b3 WEB-74070 Projects cache cleanup
+// MODIFIED IN THIS FORK: 2025-07-25 Aleksei Berezkin 1b4d405531446e2f049414861843068ad508d68d WEB-74070 Do not reopen a file if it's already opened
+// MODIFIED IN THIS FORK: 2025-07-24 Aleksei Berezkin 5567c01219bf93fad344a80691da5df021923d10 WEB-74070 Supported the method IdeGetResolvedSignature
+// MODIFIED IN THIS FORK: 2025-05-21 Piotr Tomiak dfd337df3e64d6fb2bc18c46bf4de05bcbea5a64 Support WebStorm types in LSP mode
 package lsp
 
 import (

@@ -1,3 +1,4 @@
+# MODIFIED IN THIS FORK: 2025-09-12 Konstantin Ulitin 52c02713ecf4d18626b2c4fa91b00daa319f470c Exclude testdata from indexing
 # Logs
 logs
 *.log

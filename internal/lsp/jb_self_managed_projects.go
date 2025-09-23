@@ -1,3 +1,5 @@
+// MODIFIED IN THIS FORK: 2025-08-25 Aleksei Berezkin 8aa1bd88535b085be08c607ccbecbe4e6fbfeeea Fixed fork after refactoring in upstream
+// MODIFIED IN THIS FORK: 2025-08-14 Aleksei Berezkin 57b2402e912f23f4a1345039460fac83895ce6c8 WEB-74070 Migrated away from private defaultProjectFinder.findOrCreateProject
 package lsp
 
 import (

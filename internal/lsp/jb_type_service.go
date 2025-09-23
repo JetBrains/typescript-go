@@ -1,3 +1,16 @@
+// MODIFIED IN THIS FORK: 2025-09-12 Konstantin Ulitin e3893948a2061ee66b3bc9e3df22590aba344872 support ideGetTypeProperty command
+// MODIFIED IN THIS FORK: 2025-09-08 Aleksei Berezkin 6dc83473b479cc13fb5618ce8498ba95855ebbcc Muted SourceFileNotFoundError -- former WS next just returns null here
+// MODIFIED IN THIS FORK: 2025-08-25 Aleksei Berezkin 8aa1bd88535b085be08c607ccbecbe4e6fbfeeea Fixed fork after refactoring in upstream
+// MODIFIED IN THIS FORK: 2025-08-07 Aleksei Berezkin 2c962510b51eba462c525d251e5400ed00078424 WEB-74070 Fixed unicode serialization
+// MODIFIED IN THIS FORK: 2025-08-06 Aleksei Berezkin 83dd6da40d94b76c6dd194f2abd8b6638d28f335 WEB-74070 Comment cleanup
+// MODIFIED IN THIS FORK: 2025-08-05 Aleksei Berezkin a9368494725330485924ed5ff3db447110dab0b3 WEB-74070 Projects cache cleanup
+// MODIFIED IN THIS FORK: 2025-07-30 Aleksei Berezkin 71fcb2670191ea30ff01d91bbe90b247622bd63a WEB-74070 Fixed getting type of type reference
+// MODIFIED IN THIS FORK: 2025-07-24 Aleksei Berezkin dc01ba3ed67541c5b322d4593a419fed1595c6ee WEB-74070 Fixed computed property conversion
+// MODIFIED IN THIS FORK: 2025-07-24 Aleksei Berezkin 5567c01219bf93fad344a80691da5df021923d10 WEB-74070 Supported the method IdeGetResolvedSignature
+// MODIFIED IN THIS FORK: 2025-07-23 Aleksei Berezkin 34f47754ded347ce69f74fe5c12289ac132eec88 WEB-74070 Fixed properties conversion
+// MODIFIED IN THIS FORK: 2025-07-22 Aleksei Berezkin 6f522164b5f2df9cfd7bab60d843a11ef6d31555 WEB-74070 Fixed converting generic type args
+// MODIFIED IN THIS FORK: 2025-05-29 Andrey Vorobev c2c9d57fdce88db9c175086876a86721938fe679 [js] WEB-72440 No attribute props from motion library with enabled service type engine - update TS Go
+// MODIFIED IN THIS FORK: 2025-05-21 Piotr Tomiak dfd337df3e64d6fb2bc18c46bf4de05bcbea5a64 Support WebStorm types in LSP mode
 package lsp
 
 import (

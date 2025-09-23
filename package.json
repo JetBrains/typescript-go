@@ -1,4 +1,5 @@
 {
+    "#modified-in-this-fork": "2025-07-24 Aleksei Berezkin 5567c01219bf93fad344a80691da5df021923d10 WEB-74070 Supported the method IdeGetResolvedSignature",
     "private": true,
     "name": "typescript-go",
     "version": "0.0.0",
