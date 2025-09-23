@@ -73,6 +73,8 @@ child.on('close', (code) => {
 
   const allFileModifications = new Map<string, FileModification>()
   for (const commit of commits) {
+    if (commit.message.toLocaleLowerCase().trim() === 'modification notice') continue
+
     for (const addedOrModified of commit.addedOrModified) {
       const fileModifications = allFileModifications.get(addedOrModified)
       const {hash, author, date, message} = commit
