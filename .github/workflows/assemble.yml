@@ -154,7 +154,8 @@ jobs:
             echo "Packaging $dir -> release/$ARCHIVE"
             (
               cd "$dir"
-              zip -9 "../../release/${ARCHIVE}" tsgo* *.d.ts LICENSE NOTICE.txt
+              chmod +x tsgo* 2>/dev/null || true
+              zip -9X "../../release/${ARCHIVE}" tsgo* *.d.ts LICENSE NOTICE.txt
             )
             sha256sum "release/${ARCHIVE}" | tee "release/${ARCHIVE}.sha256"
           done
