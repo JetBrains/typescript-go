@@ -12,7 +12,7 @@ import (
 )
 
 //go:generate go tool golang.org/x/tools/cmd/stringer -type=SignatureKind -output=stringer_generated.go
-//go:generate go tool mvdan.cc/gofumpt -lang=go1.25 -w stringer_generated.go
+//go:generate go tool mvdan.cc/gofumpt -w stringer_generated.go
 
 // ParseFlags
 
@@ -1252,7 +1252,8 @@ type IndexInfo struct {
 	keyType     *Type
 	valueType   *Type
 	isReadonly  bool
-	declaration *ast.Node // IndexSignatureDeclaration
+	declaration *ast.Node   // IndexSignatureDeclaration
+	components  []*ast.Node // ElementWithComputedPropertyName
 }
 
 func (i *IndexInfo) KeyType() *Type {

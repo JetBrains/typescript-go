@@ -226,6 +226,8 @@ type snapshot struct {
 	allFilesExcludingDefaultLibraryFileOnce sync.Once
 	//  Cache of all files excluding default library file for the current program
 	allFilesExcludingDefaultLibraryFile []*ast.SourceFile
+	hasChangedDtsFile                   bool
+	hasEmitDiagnostics                  bool
 
 	// Used with testing to add text of hash for better comparison
 	hashWithText bool
@@ -310,4 +312,12 @@ func diagnosticToStringBuilder(diagnostic *ast.Diagnostic, file *ast.SourceFile,
 
 func (s *snapshot) computeHash(text string) string {
 	return ComputeHash(text, s.hashWithText)
+}
+
+func (s *snapshot) canUseIncrementalState() bool {
+	if !s.options.IsIncremental() && s.options.Build.IsTrue() {
+		// If not incremental build (with tsc -b), we don't need to track state except diagnostics per file so we can use it
+		return false
+	}
+	return true
 }

@@ -67,17 +67,17 @@ type Statistics struct {
 	compileTimes     *CompileTimes
 }
 
-func statisticsFromProgram(program *compiler.Program, compileTimes *CompileTimes, memStats *runtime.MemStats) *Statistics {
+func statisticsFromProgram(input EmitInput, memStats *runtime.MemStats) *Statistics {
 	return &Statistics{
-		files:          len(program.SourceFiles()),
-		lines:          program.LineCount(),
-		identifiers:    program.IdentifierCount(),
-		symbols:        program.SymbolCount(),
-		types:          program.TypeCount(),
-		instantiations: program.InstantiationCount(),
+		files:          len(input.Program.SourceFiles()),
+		lines:          input.Program.LineCount(),
+		identifiers:    input.Program.IdentifierCount(),
+		symbols:        input.Program.SymbolCount(),
+		types:          input.Program.TypeCount(),
+		instantiations: input.Program.InstantiationCount(),
 		memoryUsed:     memStats.Alloc,
 		memoryAllocs:   memStats.Mallocs,
-		compileTimes:   compileTimes,
+		compileTimes:   input.CompileTimes,
 	}
 }
 
@@ -126,26 +126,32 @@ func (s *Statistics) Report(w io.Writer, testing CommandLineTesting) {
 	table.print(w)
 }
 
-func (s *Statistics) Aggregate(stats []*Statistics, totalTime time.Duration) {
+func (s *Statistics) Aggregate(stat *Statistics) {
 	s.isAggregate = true
-	s.compileTimes = &CompileTimes{}
-	for _, stat := range stats {
-		// Aggregate statistics
-		s.files += stat.files
-		s.lines += stat.lines
-		s.identifiers += stat.identifiers
-		s.symbols += stat.symbols
-		s.types += stat.types
-		s.instantiations += stat.instantiations
-		s.memoryUsed += stat.memoryUsed
-		s.memoryAllocs += stat.memoryAllocs
-		s.compileTimes.ConfigTime += stat.compileTimes.ConfigTime
-		s.compileTimes.BuildInfoReadTime += stat.compileTimes.BuildInfoReadTime
-		s.compileTimes.ParseTime += stat.compileTimes.ParseTime
-		s.compileTimes.bindTime += stat.compileTimes.bindTime
-		s.compileTimes.checkTime += stat.compileTimes.checkTime
-		s.compileTimes.emitTime += stat.compileTimes.emitTime
-		s.compileTimes.ChangesComputeTime += stat.compileTimes.ChangesComputeTime
+	if s.compileTimes == nil {
+		s.compileTimes = &CompileTimes{}
+	}
+	// Aggregate statistics
+	s.files += stat.files
+	s.lines += stat.lines
+	s.identifiers += stat.identifiers
+	s.symbols += stat.symbols
+	s.types += stat.types
+	s.instantiations += stat.instantiations
+	s.memoryUsed += stat.memoryUsed
+	s.memoryAllocs += stat.memoryAllocs
+	s.compileTimes.ConfigTime += stat.compileTimes.ConfigTime
+	s.compileTimes.BuildInfoReadTime += stat.compileTimes.BuildInfoReadTime
+	s.compileTimes.ParseTime += stat.compileTimes.ParseTime
+	s.compileTimes.bindTime += stat.compileTimes.bindTime
+	s.compileTimes.checkTime += stat.compileTimes.checkTime
+	s.compileTimes.emitTime += stat.compileTimes.emitTime
+	s.compileTimes.ChangesComputeTime += stat.compileTimes.ChangesComputeTime
+}
+
+func (s *Statistics) SetTotalTime(totalTime time.Duration) {
+	if s.compileTimes == nil {
+		s.compileTimes = &CompileTimes{}
 	}
 	s.compileTimes.totalTime = totalTime
 }

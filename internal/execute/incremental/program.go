@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/go-json-experiment/json"
 	"github.com/microsoft/typescript-go/internal/ast"
@@ -24,15 +23,10 @@ const (
 	SignatureUpdateKindUsedVersion
 )
 
-type BuildHost interface {
-	GetMTime(fileName string) time.Time
-	SetMTime(fileName string, mTime time.Time) error
-}
-
 type Program struct {
 	snapshot *snapshot
 	program  *compiler.Program
-	host     BuildHost
+	host     Host
 
 	// Testing data
 	testingData *TestingData
@@ -40,11 +34,11 @@ type Program struct {
 
 var _ compiler.ProgramLike = (*Program)(nil)
 
-func NewProgram(program *compiler.Program, oldProgram *Program, buildHost BuildHost, testing bool) *Program {
+func NewProgram(program *compiler.Program, oldProgram *Program, host Host, testing bool) *Program {
 	incrementalProgram := &Program{
 		snapshot: programToSnapshot(program, oldProgram, testing),
 		program:  program,
-		host:     buildHost,
+		host:     host,
 	}
 
 	if testing {
@@ -81,9 +75,8 @@ func (p *Program) GetProgram() *compiler.Program {
 	return p.program
 }
 
-func (p *Program) MakeReadonly() {
-	p.program = nil
-	p.testingData = nil
+func (p *Program) HasChangedDtsFile() bool {
+	return p.snapshot.hasChangedDtsFile
 }
 
 // Options implements compiler.AnyProgram interface.
@@ -146,22 +139,25 @@ func (p *Program) GetSemanticDiagnostics(ctx context.Context, file *ast.SourceFi
 
 	// Return result from cache
 	if file != nil {
-		cachedDiagnostics, ok := p.snapshot.semanticDiagnosticsPerFile.Load(file.Path())
-		if !ok {
-			panic("After handling all the affected files, there shouldnt be more changes")
-		}
-		return compiler.FilterNoEmitSemanticDiagnostics(cachedDiagnostics.getDiagnostics(p.program, file), p.snapshot.options)
+		return p.getSemanticDiagnosticsOfFile(file)
 	}
 
 	var diagnostics []*ast.Diagnostic
 	for _, file := range p.program.GetSourceFiles() {
-		cachedDiagnostics, ok := p.snapshot.semanticDiagnosticsPerFile.Load(file.Path())
-		if !ok {
-			panic("After handling all the affected files, there shouldnt be more changes")
-		}
-		diagnostics = append(diagnostics, compiler.FilterNoEmitSemanticDiagnostics(cachedDiagnostics.getDiagnostics(p.program, file), p.snapshot.options)...)
+		diagnostics = append(diagnostics, p.getSemanticDiagnosticsOfFile(file)...)
 	}
 	return diagnostics
+}
+
+func (p *Program) getSemanticDiagnosticsOfFile(file *ast.SourceFile) []*ast.Diagnostic {
+	cachedDiagnostics, ok := p.snapshot.semanticDiagnosticsPerFile.Load(file.Path())
+	if !ok {
+		panic("After handling all the affected files, there shouldnt be more changes")
+	}
+	return slices.Concat(
+		compiler.FilterNoEmitSemanticDiagnostics(cachedDiagnostics.getDiagnostics(p.program, file), p.snapshot.options),
+		p.program.GetIncludeProcessorDiagnostics(file),
+	)
 }
 
 // GetDeclarationDiagnostics implements compiler.AnyProgram interface.
@@ -207,15 +203,17 @@ func (p *Program) Emit(ctx context.Context, options compiler.EmitOptions) *compi
 
 // Handle affected files and cache the semantic diagnostics for all of them or the file asked for
 func (p *Program) collectSemanticDiagnosticsOfAffectedFiles(ctx context.Context, file *ast.SourceFile) {
-	// Get all affected files
-	collectAllAffectedFiles(ctx, p)
-	if ctx.Err() != nil {
-		return
-	}
+	if p.snapshot.canUseIncrementalState() {
+		// Get all affected files
+		collectAllAffectedFiles(ctx, p)
+		if ctx.Err() != nil {
+			return
+		}
 
-	if p.snapshot.semanticDiagnosticsPerFile.Size() == len(p.program.GetSourceFiles()) {
-		// If we have all the files,
-		return
+		if p.snapshot.semanticDiagnosticsPerFile.Size() == len(p.program.GetSourceFiles()) {
+			// If we have all the files,
+			return
+		}
 	}
 
 	var affectedFiles []*ast.SourceFile
@@ -277,7 +275,7 @@ func (p *Program) emitBuildInfo(ctx context.Context, options compiler.EmitOption
 	}
 	if options.WriteFile != nil {
 		err = options.WriteFile(buildInfoFileName, string(text), false, &compiler.WriteFileData{
-			BuildInfo: &buildInfo,
+			BuildInfo: buildInfo,
 		})
 	} else {
 		err = p.program.Host().FS().WriteFile(buildInfoFileName, string(text), false)
@@ -298,23 +296,45 @@ func (p *Program) emitBuildInfo(ctx context.Context, options compiler.EmitOption
 }
 
 func (p *Program) ensureHasErrorsForState(ctx context.Context, program *compiler.Program) {
-	if slices.ContainsFunc(program.GetSourceFiles(), func(file *ast.SourceFile) bool {
-		if _, ok := p.snapshot.emitDiagnosticsPerFile.Load(file.Path()); ok {
-			// emit diagnostics will be encoded in buildInfo;
-			return true
+	var hasIncludeProcessingDiagnostics func() bool
+	var hasEmitDiagnostics bool
+	if p.snapshot.canUseIncrementalState() {
+		if slices.ContainsFunc(program.GetSourceFiles(), func(file *ast.SourceFile) bool {
+			if _, ok := p.snapshot.emitDiagnosticsPerFile.Load(file.Path()); ok {
+				// emit diagnostics will be encoded in buildInfo;
+				return true
+			}
+			if hasIncludeProcessingDiagnostics == nil && len(p.program.GetIncludeProcessorDiagnostics(file)) > 0 {
+				hasIncludeProcessingDiagnostics = func() bool { return true }
+			}
+			return false
+		}) {
+			hasEmitDiagnostics = true
 		}
-		return false
-	}) {
+		if hasIncludeProcessingDiagnostics == nil {
+			hasIncludeProcessingDiagnostics = func() bool { return false }
+		}
+	} else {
+		hasEmitDiagnostics = p.snapshot.hasEmitDiagnostics
+		hasIncludeProcessingDiagnostics = func() bool {
+			return slices.ContainsFunc(program.GetSourceFiles(), func(file *ast.SourceFile) bool {
+				return len(p.program.GetIncludeProcessorDiagnostics(file)) > 0
+			})
+		}
+	}
+
+	if hasEmitDiagnostics {
 		// Record this for only non incremental build info
 		p.snapshot.hasErrors = core.IfElse(p.snapshot.options.IsIncremental(), core.TSFalse, core.TSTrue)
 		// Dont need to encode semantic errors state since the emit diagnostics are encoded
 		p.snapshot.hasSemanticErrors = false
 		return
 	}
-	if len(program.GetConfigFileParsingDiagnostics()) > 0 ||
+
+	if hasIncludeProcessingDiagnostics() ||
+		len(program.GetConfigFileParsingDiagnostics()) > 0 ||
 		len(program.GetSyntacticDiagnostics(ctx, nil)) > 0 ||
 		len(program.GetProgramDiagnostics()) > 0 ||
-		len(program.GetBindDiagnostics(ctx, nil)) > 0 ||
 		len(program.GetOptionsDiagnostics(ctx)) > 0 ||
 		len(program.GetGlobalDiagnostics(ctx)) > 0 {
 		p.snapshot.hasErrors = core.TSTrue
