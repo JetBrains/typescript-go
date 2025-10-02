@@ -135,7 +135,7 @@ const labelJson = 'modified-in-this-fork'
 function patch(fileName: string, modifications: Modification[]) {
   const prefix = fileName.endsWith('.go') || fileName.endsWith('.mts') ? `// ${label}`
     : fileName.endsWith('.md') ? `\`${label}`
-    : fileName === '.gitignore' ? `# ${label}`
+    : fileName === '.gitignore' || fileName.endsWith('.yml') ? `# ${label}`
     : fileName.endsWith('.json') ? `    "#${labelJson}": "`
     : undefined
   if (!prefix) throw new Error(`Unsupported file type: ${fileName}`)
