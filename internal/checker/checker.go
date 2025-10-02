@@ -15784,6 +15784,10 @@ func (c *Checker) getNonMissingTypeOfSymbol(symbol *ast.Symbol) *Type {
 func (c *Checker) getTypeOfInstantiatedSymbol(symbol *ast.Symbol) *Type {
 	links := c.valueSymbolLinks.Get(symbol)
 	if links.resolvedType == nil {
+		if links.target == nil {
+			// (JB) Either Symbol is inconsistent (TS bug), or we request Symbol too early
+			return c.errorType
+		}
 		links.resolvedType = c.instantiateType(c.getTypeOfSymbol(links.target), links.mapper)
 	}
 	return links.resolvedType
