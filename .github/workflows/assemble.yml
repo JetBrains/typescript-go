@@ -1,3 +1,7 @@
+# MODIFIED IN THIS FORK: 2025-10-02 Aleksei Berezkin f30777cda3c5b4a77cc5b46ad97604f4e16e3a4d Revert "WEB-74070 amd64 -> x64"
+# MODIFIED IN THIS FORK: 2025-10-02 Aleksei Berezkin 176bf7c9614b2d6e33d6a7fc14e743d2bf07528f WEB-74070 amd64 -> x64
+# MODIFIED IN THIS FORK: 2025-09-25 Vladislav Minaev ea2f806510b3c2736f219c9bb96f678715038667 Add executable permission to assembled binary
+# MODIFIED IN THIS FORK: 2025-09-25 Vladislav Minaev 15feabc9a5a69274a97a24361fc79b396e217290 add assemble workflow
 name: Assemble and Release
 
 on:

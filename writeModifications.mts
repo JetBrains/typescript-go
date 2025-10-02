@@ -1,3 +1,4 @@
+// MODIFIED IN THIS FORK: 2025-10-02 Aleksei Berezkin 9afc9892e11842abf720fa794d7e9875f1c25747 WEB-74070 Supported .yml
 // MODIFIED IN THIS FORK: 2025-09-23 Aleksei Berezkin 22d569c9439e6432f3c0d5a0eb46aefec654c073 Do not include commits changing modification notice to modification notice
 // MODIFIED IN THIS FORK: 2025-09-23 Aleksei Berezkin cde8066b5b710554e803ad957200451cea7a3053 Script to write modification notice
 import assert from 'node:assert'

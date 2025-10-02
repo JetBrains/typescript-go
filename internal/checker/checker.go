@@ -1,3 +1,4 @@
+// MODIFIED IN THIS FORK: 2025-10-02 Aleksei Berezkin 41c3f4cab446e1d6214a1e9616769e54803b7c50 WEB-74070 Fixed panic on some IdeGetSymbolType
 package checker
 
 import (
