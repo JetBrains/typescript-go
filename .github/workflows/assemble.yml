@@ -37,7 +37,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: linux-amd64
+          - name: linux-x64
             os: ubuntu-latest
             goos: linux
             goarch: amd64
@@ -45,7 +45,7 @@ jobs:
             os: ubuntu-latest
             goos: linux
             goarch: arm64
-          - name: windows-amd64
+          - name: windows-x64
             os: windows-latest
             goos: windows
             goarch: amd64
