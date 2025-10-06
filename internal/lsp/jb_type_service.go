@@ -36,7 +36,7 @@ var (
 	//nolint
 	OutdatedProjectVersionError = errors.New("OutdatedTypeCheckerIdException")
 	//nolint
-	ProjectNotFoundError = errors.New("ProjectNotFoundError")
+	OutdatedProjectIdError = errors.New("OutdatedProjectIdException")
 	//nolint
 	// SourceFileNotFoundError = errors.New("SourceFileNotFoundError")
 	// TODO When sourceFile not found, we're returning nil just like in former WS next
@@ -231,7 +231,7 @@ func getConvertContext(
 ) (*ConvertContext, func(), error) {
 	project, ok := getProject(projectId)
 	if !ok {
-		return nil, func() {}, ProjectNotFoundError
+		return nil, func() {}, OutdatedProjectIdError
 	}
 
 	if projectVersion != project.ProgramLastUpdate {
@@ -260,7 +260,7 @@ func IdeGetSymbolType(
 		return nil, errors.New("symbol not found")
 	}
 
-	t := convertContext.checker.GetTypeOfSymbolAtLocation(symbol, nil)
+	t := convertContext.checker.GetTypeOfSymbol(symbol)
 	result := ConvertType(t, convertContext)
 	result.Set("ideProjectId", projectId)
 	result.Set("ideTypeCheckerId", projectVersion)

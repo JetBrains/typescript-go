@@ -9,12 +9,15 @@ package lsp
 
 import (
 	"context"
+	"errors"
 	"runtime/debug"
 
 	"github.com/microsoft/typescript-go/internal/collections"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/project"
 )
+
+var ProjectNotFoundError = errors.New("ProjectNotFoundError")
 
 func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto.RequestMessage) error {
 	// !!! most likely not needed once support is fully implemented
@@ -30,7 +33,12 @@ func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto
 	case lsproto.IdeCommandGetElementType:
 		{
 			args := params.Arguments.(*lsproto.GetElementTypeArguments)
-			project, file := s.GetProjectAndFileName(args.ProjectFileName, args.File, ctx)
+			project, file, err := s.GetProjectAndFileName(args.ProjectFileName, args.File, ctx)
+			if err != nil {
+				s.jbSendResult(req.ID, nil, err)
+				return nil
+			}
+
 			element, err := IdeGetTypeOfElement(ctx, project, file, &args.Range, args.ForceReturnType, args.TypeRequestKind)
 			s.jbSendResult(req.ID, element, err)
 		}
@@ -62,7 +70,11 @@ func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto
 	case lsproto.IdeGetResolvedSignature:
 		{
 			args := params.Arguments.(*lsproto.GetResolvedSignatureArguments)
-			project, file := s.GetProjectAndFileName(args.ProjectFileName, args.File, ctx)
+			project, file, err := s.GetProjectAndFileName(args.ProjectFileName, args.File, ctx)
+			if err != nil {
+				s.jbSendResult(req.ID, nil, err)
+				return nil
+			}
 
 			result, err := GetResolvedSignature(ctx, project, file, args.Range)
 			s.jbSendResult(req.ID, result, err)
@@ -79,7 +91,7 @@ func (s *Server) GetProjectAndFileName(
 	projectFileNameUri *lsproto.DocumentUri,
 	fileUri lsproto.DocumentUri,
 	ctx context.Context,
-) (*project.Project, string) {
+) (*project.Project, string, error) {
 	file := fileUri.FileName()
 
 	snapshot, release := s.session.Snapshot()
@@ -97,23 +109,23 @@ func (s *Server) GetProjectAndFileName(
 
 		if IsSelfManagedProject(projectFileName) {
 			if p := GetOrCreateSelfManagedProjectForFile(s, projectFileName, file, ctx); p != nil {
-				return p, file
+				return p, file, nil
 			}
 		}
 
 		for _, p := range snapshot.ProjectCollection.Projects() {
 			if p.Name() == projectFileName && p.GetProgram().GetSourceFile(file) != nil {
-				return p, file
+				return p, file, nil
 			}
 		}
 
 		if p := GetOrCreateSelfManagedProjectForFile(s, projectFileName, file, ctx); p != nil {
-			return p, file
+			return p, file, nil
 		}
 	}
 
 	if p := snapshot.GetDefaultProject(fileUri); p != nil {
-		return p, file
+		return p, file, nil
 	}
 
 	releaseOnce()
@@ -123,12 +135,12 @@ func (s *Server) GetProjectAndFileName(
 		newSnapshot, release := s.session.Snapshot()
 		defer release()
 		if p := newSnapshot.GetDefaultProject(fileUri); p != nil {
-			return p, file
+			return p, file, nil
 		}
 	}
 
 	// No project found
-	return nil, file
+	return nil, file, ProjectNotFoundError
 
 	/*
 		// Unstable API, skip so far
