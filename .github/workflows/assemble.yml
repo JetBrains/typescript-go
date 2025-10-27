@@ -154,7 +154,11 @@ jobs:
             suffix="${base#tsgo-}"           # linux-amd64
             GOOS="${suffix%-*}"              # linux
             GOARCH="${suffix#*-}"            # amd64
-            ARCHIVE="tsgo-${TAG_NAME}-${GOOS}-${GOARCH}.zip"
+            PLATFORM_NAME="$GOOS"
+            ARCH_NAME="$GOARCH"
+            [[ "$GOARCH" == "amd64" ]] && ARCH_NAME="x64"
+            [[ "$GOOS" == "windows" ]] && PLATFORM_NAME="win32"
+            ARCHIVE="tsgo-${TAG_NAME}-${PLATFORM_NAME}-${ARCH_NAME}.zip"
             echo "Packaging $dir -> release/$ARCHIVE"
             (
               cd "$dir"
