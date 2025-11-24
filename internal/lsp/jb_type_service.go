@@ -163,8 +163,8 @@ func IdeGetTypeOfElement(
 		return nil, nil
 	}
 
-	startOffset := scanner.GetPositionOfLineAndCharacter(sourceFile, int(Range.Start.Line), int(Range.Start.Character))
-	endOffset := scanner.GetPositionOfLineAndCharacter(sourceFile, int(Range.End.Line), int(Range.End.Character))
+	startOffset := scanner.GetECMAPositionOfLineAndCharacter(sourceFile, int(Range.Start.Line), int(Range.Start.Character))
+	endOffset := scanner.GetECMAPositionOfLineAndCharacter(sourceFile, int(Range.End.Line), int(Range.End.Character))
 
 	node := astnav.GetTokenAtPosition(sourceFile, startOffset).AsNode()
 	for node != nil && node.End() < endOffset {
@@ -363,8 +363,8 @@ func GetResolvedSignature(
 		return nil, nil
 	}
 
-	startOffset := scanner.GetPositionOfLineAndCharacter(sourceFile, int(Range.Start.Line), int(Range.Start.Character))
-	endOffset := scanner.GetPositionOfLineAndCharacter(sourceFile, int(Range.End.Line), int(Range.End.Character))
+	startOffset := scanner.GetECMAPositionOfLineAndCharacter(sourceFile, int(Range.Start.Line), int(Range.Start.Character))
+	endOffset := scanner.GetECMAPositionOfLineAndCharacter(sourceFile, int(Range.End.Line), int(Range.End.Character))
 
 	typeChecker, done := program.GetTypeCheckerForFile(ctx, sourceFile)
 	defer done()
@@ -646,8 +646,8 @@ func ConvertNode(node *ast.Node, ctx *ConvertContext) *collections.OrderedMap[st
 			// Add range information
 			if sourceFileParent != nil {
 				sourceFile := sourceFileParent.AsSourceFile()
-				startLine, startChar := scanner.GetLineAndCharacterOfPosition(sourceFile, node.Pos())
-				endLine, endChar := scanner.GetLineAndCharacterOfPosition(sourceFile, node.End())
+				startLine, startChar := scanner.GetECMALineAndCharacterOfPosition(sourceFile, node.Pos())
+				endLine, endChar := scanner.GetECMALineAndCharacterOfPosition(sourceFile, node.End())
 				result.Set("range", &lsproto.Range{
 					Start: lsproto.Position{Line: uint32(startLine), Character: uint32(startChar)},
 					End:   lsproto.Position{Line: uint32(endLine), Character: uint32(endChar)},

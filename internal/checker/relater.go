@@ -448,7 +448,7 @@ func (c *Checker) elaborateError(node *ast.Node, source *Type, target *Type, rel
 	}
 	switch node.Kind {
 	case ast.KindAsExpression:
-		if !isConstAssertion(node) {
+		if !ast.IsConstAssertion(node) {
 			break
 		}
 		fallthrough
@@ -498,7 +498,7 @@ func (c *Checker) elaborateObjectLiteral(node *ast.Node, source *Type, target *T
 		return false
 	}
 	reportedError := false
-	for _, prop := range node.AsObjectLiteralExpression().Properties.Nodes {
+	for _, prop := range node.Properties() {
 		if ast.IsSpreadAssignment(prop) {
 			continue
 		}
@@ -530,7 +530,7 @@ func (c *Checker) elaborateArrayLiteral(node *ast.Node, source *Type, target *Ty
 		}
 	}
 	reportedError := false
-	for i, element := range node.AsArrayLiteralExpression().Elements.Nodes {
+	for i, element := range node.Elements() {
 		if ast.IsOmittedExpression(element) || c.isTupleLikeType(target) && c.getPropertyOfType(target, jsnum.Number(i).String()) == nil {
 			continue
 		}
@@ -1057,11 +1057,11 @@ func (c *Checker) findMatchingDiscriminantType(source *Type, target *Type, isRel
 		if match := c.getMatchingUnionConstituentForType(target, source); match != nil {
 			return match
 		}
-		discriminantProperties := c.findDiscriminantProperties(c.getPropertiesOfType(source), target)
-		discriminator := &TypeDiscriminator{c: c, props: discriminantProperties, isRelatedTo: isRelatedTo}
-		discriminated := c.discriminateTypeByDiscriminableItems(target, discriminator)
-		if discriminated != target {
-			return discriminated
+		if discriminantProperties := c.findDiscriminantProperties(c.getPropertiesOfType(source), target); len(discriminantProperties) != 0 {
+			discriminator := &TypeDiscriminator{c: c, props: discriminantProperties, isRelatedTo: isRelatedTo}
+			if discriminated := c.discriminateTypeByDiscriminableItems(target, discriminator); discriminated != target {
+				return discriminated
+			}
 		}
 	}
 	return nil
@@ -1968,7 +1968,7 @@ func (c *Checker) getTupleElementLabelFromBindingElement(node *ast.Node, index i
 			return name + "_n"
 		case ast.KindArrayBindingPattern:
 			if hasDotDotDotToken(node) {
-				elements := node.Name().AsBindingPattern().Elements.Nodes
+				elements := node.Name().Elements()
 				lastElement := core.LastOrNil(elements)
 				lastElementIsBindingElementRest := lastElement != nil && ast.IsBindingElement(lastElement) && hasDotDotDotToken(lastElement)
 				elementCount := len(elements) - core.IfElse(lastElementIsBindingElementRest, 1, 0)
@@ -1999,19 +1999,11 @@ func (c *Checker) getTypePredicateOfSignature(sig *Signature) *TypePredicate {
 		default:
 			if sig.declaration != nil {
 				typeNode := sig.declaration.Type()
-				var jsdocTypePredicate *TypePredicate
-				if typeNode == nil {
-					if jsdocSignature := c.getSignatureOfFullSignatureType(sig.declaration); jsdocSignature != nil {
-						jsdocTypePredicate = c.getTypePredicateOfSignature(jsdocSignature)
-					}
-				}
 				switch {
 				case typeNode != nil:
 					if ast.IsTypePredicateNode(typeNode) {
 						sig.resolvedTypePredicate = c.createTypePredicateFromTypePredicateNode(typeNode, sig)
 					}
-				case jsdocTypePredicate != nil:
-					sig.resolvedTypePredicate = jsdocTypePredicate
 				case ast.IsFunctionLikeDeclaration(sig.declaration) && (sig.resolvedReturnType == nil || sig.resolvedReturnType.flags&TypeFlagsBoolean != 0) && c.getParameterCount(sig) > 0:
 					sig.resolvedTypePredicate = c.noTypePredicate // avoid infinite loop
 					sig.resolvedTypePredicate = c.getTypePredicateFromBody(sig.declaration)
@@ -3303,6 +3295,22 @@ func (r *Relater) structuredTypeRelatedToWorker(source *Type, target *Type, repo
 					return result
 				}
 			}
+		case source.flags&TypeFlagsTemplateLiteral != 0:
+			if slices.Equal(source.AsTemplateLiteralType().texts, target.AsTemplateLiteralType().texts) {
+				result = TernaryTrue
+				for i, sourceType := range source.AsTemplateLiteralType().types {
+					targetType := target.AsTemplateLiteralType().types[i]
+					result &= r.isRelatedTo(sourceType, targetType, RecursionFlagsBoth, false /*reportErrors*/)
+					if result == TernaryFalse {
+						return result
+					}
+				}
+				return result
+			}
+		case source.flags&TypeFlagsStringMapping != 0:
+			if source.AsStringMappingType().Symbol() == target.AsStringMappingType().Symbol() {
+				return r.isRelatedTo(source.AsStringMappingType().target, target.AsStringMappingType().target, RecursionFlagsBoth, false /*reportErrors*/)
+			}
 		}
 		if source.flags&TypeFlagsObject == 0 {
 			return TernaryFalse
@@ -3867,26 +3875,32 @@ func (r *Relater) typeArgumentsRelatedTo(sources []*Type, targets []*Type, varia
 				} else {
 					related = r.c.compareTypesIdentical(s, t)
 				}
-			} else if variance == VarianceFlagsCovariant {
-				related = r.isRelatedToEx(s, t, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
-			} else if variance == VarianceFlagsContravariant {
-				related = r.isRelatedToEx(t, s, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
-			} else if variance == VarianceFlagsBivariant {
-				// In the bivariant case we first compare contravariantly without reporting
-				// errors. Then, if that doesn't succeed, we compare covariantly with error
-				// reporting. Thus, error elaboration will be based on the covariant check,
-				// which is generally easier to reason about.
-				related = r.isRelatedTo(t, s, RecursionFlagsBoth, false /*reportErrors*/)
-				if related == TernaryFalse {
-					related = r.isRelatedToEx(s, t, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
-				}
 			} else {
-				// In the invariant case we first compare covariantly, and only when that
-				// succeeds do we proceed to compare contravariantly. Thus, error elaboration
-				// will typically be based on the covariant check.
-				related = r.isRelatedToEx(s, t, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
-				if related != TernaryFalse {
-					related &= r.isRelatedToEx(t, s, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
+				// Propagate unreliable variance flag
+				if r.c.inVarianceComputation && varianceFlags&VarianceFlagsUnreliable != 0 {
+					r.c.instantiateType(s, r.c.reportUnreliableMapper)
+				}
+				if variance == VarianceFlagsCovariant {
+					related = r.isRelatedToEx(s, t, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
+				} else if variance == VarianceFlagsContravariant {
+					related = r.isRelatedToEx(t, s, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
+				} else if variance == VarianceFlagsBivariant {
+					// In the bivariant case we first compare contravariantly without reporting
+					// errors. Then, if that doesn't succeed, we compare covariantly with error
+					// reporting. Thus, error elaboration will be based on the covariant check,
+					// which is generally easier to reason about.
+					related = r.isRelatedTo(t, s, RecursionFlagsBoth, false /*reportErrors*/)
+					if related == TernaryFalse {
+						related = r.isRelatedToEx(s, t, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
+					}
+				} else {
+					// In the invariant case we first compare covariantly, and only when that
+					// succeeds do we proceed to compare contravariantly. Thus, error elaboration
+					// will typically be based on the covariant check.
+					related = r.isRelatedToEx(s, t, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
+					if related != TernaryFalse {
+						related &= r.isRelatedToEx(t, s, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
+					}
 				}
 			}
 			if related == TernaryFalse {
@@ -4253,6 +4267,10 @@ func (r *Relater) propertyRelatedTo(source *Type, target *Type, sourceProp *ast.
 func (r *Relater) isPropertySymbolTypeRelated(sourceProp *ast.Symbol, targetProp *ast.Symbol, getTypeOfSourceProperty func(sym *ast.Symbol) *Type, reportErrors bool, intersectionState IntersectionState) Ternary {
 	targetIsOptional := r.c.strictNullChecks && targetProp.CheckFlags&ast.CheckFlagsPartial != 0
 	effectiveTarget := r.c.addOptionalityEx(r.c.getNonMissingTypeOfSymbol(targetProp), false /*isProperty*/, targetIsOptional)
+	// source could resolve to `any` and that's not related to `unknown` target under strict subtype relation
+	if effectiveTarget.flags&core.IfElse(r.relation == r.c.strictSubtypeRelation, TypeFlagsAny, TypeFlagsAnyOrUnknown) != 0 {
+		return TernaryTrue
+	}
 	effectiveSource := getTypeOfSourceProperty(sourceProp)
 	return r.isRelatedToEx(effectiveSource, effectiveTarget, RecursionFlagsBoth, reportErrors, nil /*headMessage*/, intersectionState)
 }

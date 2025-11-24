@@ -231,9 +231,8 @@ func (r *Resolver) ResolveModuleName(moduleName string, containingFile string, r
 	}
 	containingDirectory := tspath.GetDirectoryPath(containingFile)
 
-	moduleResolution := compilerOptions.ModuleResolution
-	if moduleResolution == core.ModuleResolutionKindUnknown {
-		moduleResolution = compilerOptions.GetModuleResolutionKind()
+	moduleResolution := compilerOptions.GetModuleResolutionKind()
+	if compilerOptions.ModuleResolution != moduleResolution {
 		if traceBuilder != nil {
 			traceBuilder.write(diagnostics.Module_resolution_kind_is_not_specified_using_0.Format(moduleResolution.String()))
 		}
@@ -1675,7 +1674,7 @@ func (r *resolutionState) getPackageJsonInfo(packageDirectory string, onlyRecord
 	if directoryExists && r.resolver.host.FS().FileExists(packageJsonPath) {
 		// Ignore error
 		contents, _ := r.resolver.host.FS().ReadFile(packageJsonPath)
-		packageJsonContent, _ := packagejson.Parse([]byte(contents))
+		packageJsonContent, err := packagejson.Parse([]byte(contents))
 		if r.tracer != nil {
 			r.tracer.write(diagnostics.Found_package_json_at_0.Format(packageJsonPath))
 		}
@@ -1683,7 +1682,8 @@ func (r *resolutionState) getPackageJsonInfo(packageDirectory string, onlyRecord
 			PackageDirectory: packageDirectory,
 			DirectoryExists:  true,
 			Contents: &packagejson.PackageJson{
-				Fields: packageJsonContent,
+				Fields:    packageJsonContent,
+				Parseable: err == nil,
 			},
 		}
 		result = r.resolver.packageJsonInfoCache.Set(packageJsonPath, result)
@@ -1733,7 +1733,11 @@ func (r *resolutionState) readPackageJsonPeerDependencies(packageJsonInfo *packa
 		r.tracer.write(diagnostics.X_package_json_has_a_peerDependencies_field.Message())
 	}
 	packageDirectory := r.realPath(packageJsonInfo.PackageDirectory)
-	nodeModules := packageDirectory[:strings.LastIndex(packageDirectory, "/node_modules")+len("/node_modules")] + "/"
+	nodeModulesIndex := strings.LastIndex(packageDirectory, "/node_modules")
+	if nodeModulesIndex == -1 {
+		return ""
+	}
+	nodeModules := packageDirectory[:nodeModulesIndex+len("/node_modules")] + "/"
 	builder := strings.Builder{}
 	for name := range peerDependencies.Value {
 		peerPackageJson := r.getPackageJsonInfo(nodeModules+name /*onlyRecordFailures*/, false)
@@ -1953,11 +1957,11 @@ func matchesPatternWithTrailer(target string, name string) bool {
 	if strings.HasSuffix(target, "*") {
 		return false
 	}
-	starPos := strings.Index(target, "*")
-	if starPos == -1 {
+	before, after, ok := strings.Cut(target, "*")
+	if !ok {
 		return false
 	}
-	return strings.HasPrefix(name, target[:starPos]) && strings.HasSuffix(name, target[starPos+1:])
+	return strings.HasPrefix(name, before) && strings.HasSuffix(name, after)
 }
 
 /** True if `extension` is one of the supported `extensions`. */

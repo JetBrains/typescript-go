@@ -7,24 +7,24 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"os/exec"
-	"os/signal"
 	"runtime/debug"
 	"slices"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/go-json-experiment/json"
 	"github.com/microsoft/typescript-go/internal/collections"
 	"github.com/microsoft/typescript-go/internal/core"
+	"github.com/microsoft/typescript-go/internal/jsonutil"
 	"github.com/microsoft/typescript-go/internal/ls"
+	"github.com/microsoft/typescript-go/internal/ls/lsconv"
+	"github.com/microsoft/typescript-go/internal/ls/lsutil"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/project"
 	"github.com/microsoft/typescript-go/internal/project/ata"
 	"github.com/microsoft/typescript-go/internal/project/logging"
+	"github.com/microsoft/typescript-go/internal/tspath"
 	"github.com/microsoft/typescript-go/internal/vfs"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/language"
@@ -40,6 +40,7 @@ type ServerOptions struct {
 	DefaultLibraryPath string
 	TypingsLocation    string
 	ParseCache         *project.ParseCache
+	NpmInstall         func(cwd string, args []string) ([]byte, error)
 }
 
 func NewServer(opts *ServerOptions) *Server {
@@ -60,6 +61,7 @@ func NewServer(opts *ServerOptions) *Server {
 		defaultLibraryPath:    opts.DefaultLibraryPath,
 		typingsLocation:       opts.TypingsLocation,
 		parseCache:            opts.ParseCache,
+		npmInstall:            opts.NpmInstall,
 	}
 }
 
@@ -144,9 +146,10 @@ type Server struct {
 	defaultLibraryPath string
 	typingsLocation    string
 
-	initializeParams *lsproto.InitializeParams
-	positionEncoding lsproto.PositionEncodingKind
-	locale           language.Tag
+	initializeParams   *lsproto.InitializeParams
+	clientCapabilities lsproto.ResolvedClientCapabilities
+	positionEncoding   lsproto.PositionEncodingKind
+	locale             language.Tag
 
 	watchEnabled bool
 	watcherID    atomic.Uint32
@@ -158,11 +161,13 @@ type Server struct {
 	compilerOptionsForInferredProjects *core.CompilerOptions
 	// parseCache can be passed in so separate tests can share ASTs
 	parseCache *project.ParseCache
+
+	npmInstall func(cwd string, args []string) ([]byte, error)
 }
 
 // WatchFiles implements project.Client.
 func (s *Server) WatchFiles(ctx context.Context, id project.WatcherID, watchers []*lsproto.FileSystemWatcher) error {
-	_, err := s.sendRequest(ctx, lsproto.MethodClientRegisterCapability, &lsproto.RegistrationParams{
+	_, err := sendClientRequest(ctx, s, lsproto.ClientRegisterCapabilityInfo, &lsproto.RegistrationParams{
 		Registrations: []*lsproto.Registration{
 			{
 				Id:     string(id),
@@ -184,7 +189,7 @@ func (s *Server) WatchFiles(ctx context.Context, id project.WatcherID, watchers 
 // UnwatchFiles implements project.Client.
 func (s *Server) UnwatchFiles(ctx context.Context, id project.WatcherID) error {
 	if s.watchers.Has(id) {
-		_, err := s.sendRequest(ctx, lsproto.MethodClientUnregisterCapability, &lsproto.UnregistrationParams{
+		_, err := sendClientRequest(ctx, s, lsproto.ClientUnregisterCapabilityInfo, &lsproto.UnregistrationParams{
 			Unregisterations: []*lsproto.Unregistration{
 				{
 					Id:     string(id),
@@ -205,24 +210,51 @@ func (s *Server) UnwatchFiles(ctx context.Context, id project.WatcherID) error {
 
 // RefreshDiagnostics implements project.Client.
 func (s *Server) RefreshDiagnostics(ctx context.Context) error {
-	if s.initializeParams.Capabilities == nil ||
-		s.initializeParams.Capabilities.Workspace == nil ||
-		s.initializeParams.Capabilities.Workspace.Diagnostics == nil ||
-		!ptrIsTrue(s.initializeParams.Capabilities.Workspace.Diagnostics.RefreshSupport) {
+	if !s.clientCapabilities.Workspace.Diagnostics.RefreshSupport {
 		return nil
 	}
 
-	if _, err := s.sendRequest(ctx, lsproto.MethodWorkspaceDiagnosticRefresh, nil); err != nil {
+	if _, err := sendClientRequest(ctx, s, lsproto.WorkspaceDiagnosticRefreshInfo, nil); err != nil {
 		return fmt.Errorf("failed to refresh diagnostics: %w", err)
 	}
 
 	return nil
 }
 
-func (s *Server) Run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+// PublishDiagnostics implements project.Client.
+func (s *Server) PublishDiagnostics(ctx context.Context, params *lsproto.PublishDiagnosticsParams) error {
+	notification := lsproto.TextDocumentPublishDiagnosticsInfo.NewNotificationMessage(params)
+	s.outgoingQueue <- notification.Message()
+	return nil
+}
 
+func (s *Server) RequestConfiguration(ctx context.Context) (*lsutil.UserPreferences, error) {
+	caps := lsproto.GetClientCapabilities(ctx)
+	if !caps.Workspace.Configuration {
+		// if no configuration request capapbility, return default preferences
+		return s.session.NewUserPreferences(), nil
+	}
+	configs, err := sendClientRequest(ctx, s, lsproto.WorkspaceConfigurationInfo, &lsproto.ConfigurationParams{
+		Items: []*lsproto.ConfigurationItem{
+			{
+				Section: ptrTo("typescript"),
+			},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure request failed: %w", err)
+	}
+	s.Log(fmt.Sprintf("\n\nconfiguration: %+v, %T\n\n", configs, configs))
+	userPreferences := s.session.NewUserPreferences()
+	for _, item := range configs {
+		if parsed := userPreferences.Parse(item); parsed != nil {
+			return parsed, nil
+		}
+	}
+	return userPreferences, nil
+}
+
+func (s *Server) Run(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return s.dispatchLoop(ctx) })
 	g.Go(func() error { return s.writeLoop(ctx) })
@@ -367,9 +399,9 @@ func (s *Server) writeLoop(ctx context.Context) error {
 	}
 }
 
-func (s *Server) sendRequest(ctx context.Context, method lsproto.Method, params any) (any, error) {
+func sendClientRequest[Req, Resp any](ctx context.Context, s *Server, info lsproto.RequestInfo[Req, Resp], params Req) (Resp, error) {
 	id := lsproto.NewIDString(fmt.Sprintf("ts%d", s.clientSeq.Add(1)))
-	req := lsproto.NewRequestMessage(method, id, params)
+	req := info.NewRequestMessage(id, params)
 
 	responseChan := make(chan *lsproto.ResponseMessage, 1)
 	s.pendingServerRequestsMu.Lock()
@@ -386,12 +418,12 @@ func (s *Server) sendRequest(ctx context.Context, method lsproto.Method, params 
 			close(respChan)
 			delete(s.pendingServerRequests, *id)
 		}
-		return nil, ctx.Err()
+		return *new(Resp), ctx.Err()
 	case resp := <-responseChan:
 		if resp.Error != nil {
-			return nil, fmt.Errorf("request failed: %s", resp.Error.String())
+			return *new(Resp), fmt.Errorf("request failed: %s", resp.Error.String())
 		}
-		return resp.Result, nil
+		return info.UnmarshalResult(resp.Result)
 	}
 }
 
@@ -422,6 +454,8 @@ func (s *Server) sendResponse(resp *lsproto.ResponseMessage) {
 }
 
 func (s *Server) handleRequestOrNotification(ctx context.Context, req *lsproto.RequestMessage) error {
+	ctx = lsproto.WithClientCapabilities(ctx, &s.clientCapabilities)
+
 	switch req.Params.(type) {
 	case *lsproto.JbHandleCustomTsServerCommandParams:
 		return s.jbHandleCustomTsServerCommand(ctx, req)
@@ -447,6 +481,7 @@ var handlers = sync.OnceValue(func() handlerMap {
 	registerRequestHandler(handlers, lsproto.ShutdownInfo, (*Server).handleShutdown)
 	registerNotificationHandler(handlers, lsproto.ExitInfo, (*Server).handleExit)
 
+	registerNotificationHandler(handlers, lsproto.WorkspaceDidChangeConfigurationInfo, (*Server).handleDidChangeWorkspaceConfiguration)
 	registerNotificationHandler(handlers, lsproto.TextDocumentDidOpenInfo, (*Server).handleDidOpen)
 	registerNotificationHandler(handlers, lsproto.TextDocumentDidChangeInfo, (*Server).handleDidChange)
 	registerNotificationHandler(handlers, lsproto.TextDocumentDidSaveInfo, (*Server).handleDidSave)
@@ -468,6 +503,9 @@ var handlers = sync.OnceValue(func() handlerMap {
 	registerLanguageServiceDocumentRequestHandler(handlers, lsproto.TextDocumentDocumentSymbolInfo, (*Server).handleDocumentSymbol)
 	registerLanguageServiceDocumentRequestHandler(handlers, lsproto.TextDocumentRenameInfo, (*Server).handleRename)
 	registerLanguageServiceDocumentRequestHandler(handlers, lsproto.TextDocumentDocumentHighlightInfo, (*Server).handleDocumentHighlight)
+	registerLanguageServiceDocumentRequestHandler(handlers, lsproto.TextDocumentSelectionRangeInfo, (*Server).handleSelectionRange)
+	registerLanguageServiceDocumentRequestHandler(handlers, lsproto.TextDocumentInlayHintInfo, (*Server).handleInlayHint)
+	registerLanguageServiceDocumentRequestHandler(handlers, lsproto.TextDocumentCodeActionInfo, (*Server).handleCodeAction)
 	registerRequestHandler(handlers, lsproto.WorkspaceSymbolInfo, (*Server).handleWorkspaceSymbol)
 	registerRequestHandler(handlers, lsproto.CompletionItemResolveInfo, (*Server).handleCompletionItemResolve)
 
@@ -561,12 +599,18 @@ func (s *Server) handleInitialize(ctx context.Context, params *lsproto.Initializ
 	}
 
 	s.initializeParams = params
+	s.clientCapabilities = resolveClientCapabilities(params.Capabilities)
+
+	if _, err := fmt.Fprint(s.stderr, "Resolved client capabilities: "); err != nil {
+		return nil, err
+	}
+	if err := jsonutil.MarshalIndentWrite(s.stderr, &s.clientCapabilities, "", "\t"); err != nil {
+		return nil, err
+	}
 
 	s.positionEncoding = lsproto.PositionEncodingKindUTF16
-	if genCapabilities := s.initializeParams.Capabilities.General; genCapabilities != nil && genCapabilities.PositionEncodings != nil {
-		if slices.Contains(*genCapabilities.PositionEncodings, lsproto.PositionEncodingKindUTF8) {
-			s.positionEncoding = lsproto.PositionEncodingKindUTF8
-		}
+	if slices.Contains(s.clientCapabilities.General.PositionEncodings, lsproto.PositionEncodingKindUTF8) {
+		s.positionEncoding = lsproto.PositionEncodingKindUTF8
 	}
 
 	if s.initializeParams.Locale != nil {
@@ -647,6 +691,19 @@ func (s *Server) handleInitialize(ctx context.Context, params *lsproto.Initializ
 			DocumentHighlightProvider: &lsproto.BooleanOrDocumentHighlightOptions{
 				Boolean: ptrTo(true),
 			},
+			SelectionRangeProvider: &lsproto.BooleanOrSelectionRangeOptionsOrSelectionRangeRegistrationOptions{
+				Boolean: ptrTo(true),
+			},
+			InlayHintProvider: &lsproto.BooleanOrInlayHintOptionsOrInlayHintRegistrationOptions{
+				Boolean: ptrTo(true),
+			},
+			CodeActionProvider: &lsproto.BooleanOrCodeActionOptions{
+				CodeActionOptions: &lsproto.CodeActionOptions{
+					CodeActionKinds: &[]lsproto.CodeActionKind{
+						lsproto.CodeActionKindQuickFix,
+					},
+				},
+			},
 		},
 	}
 
@@ -654,19 +711,45 @@ func (s *Server) handleInitialize(ctx context.Context, params *lsproto.Initializ
 }
 
 func (s *Server) handleInitialized(ctx context.Context, params *lsproto.InitializedParams) error {
-	if shouldEnableWatch(s.initializeParams) {
+	if s.clientCapabilities.Workspace.DidChangeWatchedFiles.DynamicRegistration {
 		s.watchEnabled = true
+	}
+
+	cwd := s.cwd
+	if s.clientCapabilities.Workspace.WorkspaceFolders &&
+		s.initializeParams.WorkspaceFolders != nil &&
+		s.initializeParams.WorkspaceFolders.WorkspaceFolders != nil &&
+		len(*s.initializeParams.WorkspaceFolders.WorkspaceFolders) == 1 {
+		cwd = lsproto.DocumentUri((*s.initializeParams.WorkspaceFolders.WorkspaceFolders)[0].Uri).FileName()
+	} else if s.initializeParams.RootUri.DocumentUri != nil {
+		cwd = s.initializeParams.RootUri.DocumentUri.FileName()
+	} else if s.initializeParams.RootPath != nil && s.initializeParams.RootPath.String != nil {
+		cwd = *s.initializeParams.RootPath.String
+	}
+	if !tspath.PathIsAbsolute(cwd) {
+		cwd = s.cwd
+	}
+
+	var disablePushDiagnostics bool
+	if s.initializeParams != nil && s.initializeParams.InitializationOptions != nil && *s.initializeParams.InitializationOptions != nil {
+		// Check for disablePushDiagnostics option
+		if initOpts, ok := (*s.initializeParams.InitializationOptions).(map[string]any); ok {
+			if disable, ok := initOpts["disablePushDiagnostics"].(bool); ok {
+				disablePushDiagnostics = disable
+			}
+		}
 	}
 
 	s.session = project.NewSession(&project.SessionInit{
 		Options: &project.SessionOptions{
-			CurrentDirectory:   s.cwd,
-			DefaultLibraryPath: s.defaultLibraryPath,
-			TypingsLocation:    s.typingsLocation,
-			PositionEncoding:   s.positionEncoding,
-			WatchEnabled:       s.watchEnabled,
-			LoggingEnabled:     true,
-			DebounceDelay:      500 * time.Millisecond,
+			CurrentDirectory:       cwd,
+			DefaultLibraryPath:     s.defaultLibraryPath,
+			TypingsLocation:        s.typingsLocation,
+			PositionEncoding:       s.positionEncoding,
+			WatchEnabled:           s.watchEnabled,
+			LoggingEnabled:         true,
+			DebounceDelay:          500 * time.Millisecond,
+			PushDiagnosticsEnabled: !disablePushDiagnostics,
 		},
 		FS:          s.fs,
 		Logger:      s.logger,
@@ -674,7 +757,34 @@ func (s *Server) handleInitialized(ctx context.Context, params *lsproto.Initiali
 		NpmExecutor: s,
 		ParseCache:  s.parseCache,
 	})
-	// !!! temporary; remove when we have `handleDidChangeConfiguration`/implicit project config support
+
+	userPreferences, err := s.RequestConfiguration(ctx)
+	if err != nil {
+		return err
+	}
+	s.session.InitializeWithConfig(userPreferences)
+
+	_, err = sendClientRequest(ctx, s, lsproto.ClientRegisterCapabilityInfo, &lsproto.RegistrationParams{
+		Registrations: []*lsproto.Registration{
+			{
+				Id:     "typescript-config-watch-id",
+				Method: string(lsproto.MethodWorkspaceDidChangeConfiguration),
+				RegisterOptions: ptrTo(any(lsproto.DidChangeConfigurationRegistrationOptions{
+					Section: &lsproto.StringOrStrings{
+						// !!! Both the 'javascript' and 'js/ts' scopes need to be watched for settings as well.
+						Strings: &[]string{"typescript"},
+					},
+				})),
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to register configuration change watcher: %w", err)
+	}
+
+	// !!! temporary.
+	// Remove when we have `handleDidChangeConfiguration`/implicit project config support
+	// derived from 'js/ts.implicitProjectConfig.*'.
 	if s.compilerOptionsForInferredProjects != nil {
 		s.session.DidChangeCompilerOptionsForInferredProjects(ctx, s.compilerOptionsForInferredProjects)
 	}
@@ -689,6 +799,21 @@ func (s *Server) handleShutdown(ctx context.Context, params any, _ *lsproto.Requ
 
 func (s *Server) handleExit(ctx context.Context, params any) error {
 	return io.EOF
+}
+
+func (s *Server) handleDidChangeWorkspaceConfiguration(ctx context.Context, params *lsproto.DidChangeConfigurationParams) error {
+	settings, ok := params.Settings.(map[string]any)
+	if !ok {
+		return nil
+	}
+	// !!! Both the 'javascript' and 'js/ts' scopes need to be checked for settings as well.
+	tsSettings := settings["typescript"]
+	userPreferences := s.session.UserPreferences()
+	if parsed := userPreferences.Parse(tsSettings); parsed != nil {
+		userPreferences = parsed
+	}
+	s.session.Configure(userPreferences)
+	return nil
 }
 
 func (s *Server) handleDidOpen(ctx context.Context, params *lsproto.DidOpenTextDocumentParams) error {
@@ -745,8 +870,6 @@ func (s *Server) handleSignatureHelp(ctx context.Context, languageService *ls.La
 		params.TextDocument.Uri,
 		params.Position,
 		params.Context,
-		s.initializeParams.Capabilities.TextDocument.SignatureHelp,
-		&ls.UserPreferences{},
 	)
 }
 
@@ -769,17 +892,12 @@ func (s *Server) handleImplementations(ctx context.Context, ls *ls.LanguageServi
 }
 
 func (s *Server) handleCompletion(ctx context.Context, languageService *ls.LanguageService, params *lsproto.CompletionParams) (lsproto.CompletionResponse, error) {
-	// !!! get user preferences
 	return languageService.ProvideCompletion(
 		ctx,
 		params.TextDocument.Uri,
 		params.Position,
 		params.Context,
-		getCompletionClientCapabilities(s.initializeParams),
-		&ls.UserPreferences{
-			IncludeCompletionsForModuleExports:    ptrTo(true),
-			IncludeCompletionsForImportStatements: ptrTo(true),
-		})
+	)
 }
 
 func (s *Server) handleCompletionItemResolve(ctx context.Context, params *lsproto.CompletionItem, reqMsg *lsproto.RequestMessage) (lsproto.CompletionResolveResponse, error) {
@@ -787,7 +905,7 @@ func (s *Server) handleCompletionItemResolve(ctx context.Context, params *lsprot
 	if err != nil {
 		return nil, err
 	}
-	languageService, err := s.session.GetLanguageService(ctx, ls.FileNameToDocumentURI(data.FileName))
+	languageService, err := s.session.GetLanguageService(ctx, lsconv.FileNameToDocumentURI(data.FileName))
 	if err != nil {
 		return nil, err
 	}
@@ -796,11 +914,6 @@ func (s *Server) handleCompletionItemResolve(ctx context.Context, params *lsprot
 		ctx,
 		params,
 		data,
-		getCompletionClientCapabilities(s.initializeParams),
-		&ls.UserPreferences{
-			IncludeCompletionsForModuleExports:    ptrTo(true),
-			IncludeCompletionsForImportStatements: ptrTo(true),
-		},
 	)
 }
 
@@ -851,6 +964,22 @@ func (s *Server) handleDocumentHighlight(ctx context.Context, ls *ls.LanguageSer
 	return ls.ProvideDocumentHighlights(ctx, params.TextDocument.Uri, params.Position)
 }
 
+func (s *Server) handleSelectionRange(ctx context.Context, ls *ls.LanguageService, params *lsproto.SelectionRangeParams) (lsproto.SelectionRangeResponse, error) {
+	return ls.ProvideSelectionRanges(ctx, params)
+}
+
+func (s *Server) handleCodeAction(ctx context.Context, ls *ls.LanguageService, params *lsproto.CodeActionParams) (lsproto.CodeActionResponse, error) {
+	return ls.ProvideCodeActions(ctx, params)
+}
+
+func (s *Server) handleInlayHint(
+	ctx context.Context,
+	languageService *ls.LanguageService,
+	params *lsproto.InlayHintParams,
+) (lsproto.InlayHintResponse, error) {
+	return languageService.ProvideInlayHint(ctx, params)
+}
+
 func (s *Server) Log(msg ...any) {
 	fmt.Fprintln(s.stderr, msg...)
 }
@@ -865,9 +994,7 @@ func (s *Server) SetCompilerOptionsForInferredProjects(ctx context.Context, opti
 
 // NpmInstall implements ata.NpmExecutor
 func (s *Server) NpmInstall(cwd string, args []string) ([]byte, error) {
-	cmd := exec.Command("npm", args...)
-	cmd.Dir = cwd
-	return cmd.Output()
+	return s.npmInstall(cwd, args)
 }
 
 func isBlockingMethod(method lsproto.Method) bool {
@@ -878,7 +1005,9 @@ func isBlockingMethod(method lsproto.Method) bool {
 		lsproto.MethodTextDocumentDidChange,
 		lsproto.MethodTextDocumentDidSave,
 		lsproto.MethodTextDocumentDidClose,
-		lsproto.MethodWorkspaceDidChangeWatchedFiles:
+		lsproto.MethodWorkspaceDidChangeWatchedFiles,
+		lsproto.MethodWorkspaceDidChangeConfiguration,
+		lsproto.MethodWorkspaceConfiguration:
 		return true
 	}
 	return false
@@ -888,24 +1017,28 @@ func ptrTo[T any](v T) *T {
 	return &v
 }
 
-func ptrIsTrue(v *bool) bool {
-	if v == nil {
-		return false
-	}
-	return *v
-}
+func resolveClientCapabilities(caps *lsproto.ClientCapabilities) lsproto.ResolvedClientCapabilities {
+	resolved := lsproto.ResolveClientCapabilities(caps)
 
-func shouldEnableWatch(params *lsproto.InitializeParams) bool {
-	if params == nil || params.Capabilities == nil || params.Capabilities.Workspace == nil {
-		return false
+	// Some clients claim that push and pull diagnostics have different capabilities,
+	// including vscode-languageclient v9. Work around this by defaulting any missing
+	// pull diagnostic caps with the pull diagnostic equivalents.
+	//
+	// TODO: remove when we upgrade to vscode-languageclient v10, which fixes this issue.
+	publish := resolved.TextDocument.PublishDiagnostics
+	diagnostic := &resolved.TextDocument.Diagnostic
+	if !diagnostic.RelatedInformation && publish.RelatedInformation {
+		diagnostic.RelatedInformation = true
 	}
-	return params.Capabilities.Workspace.DidChangeWatchedFiles != nil &&
-		ptrIsTrue(params.Capabilities.Workspace.DidChangeWatchedFiles.DynamicRegistration)
-}
+	if !diagnostic.CodeDescriptionSupport && publish.CodeDescriptionSupport {
+		diagnostic.CodeDescriptionSupport = true
+	}
+	if !diagnostic.DataSupport && publish.DataSupport {
+		diagnostic.DataSupport = true
+	}
+	if len(diagnostic.TagSupport.ValueSet) == 0 && len(publish.TagSupport.ValueSet) > 0 {
+		diagnostic.TagSupport.ValueSet = publish.TagSupport.ValueSet
+	}
 
-func getCompletionClientCapabilities(params *lsproto.InitializeParams) *lsproto.CompletionClientCapabilities {
-	if params == nil || params.Capabilities == nil || params.Capabilities.TextDocument == nil {
-		return nil
-	}
-	return params.Capabilities.TextDocument.Completion
+	return resolved
 }
