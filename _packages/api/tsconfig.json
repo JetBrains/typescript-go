@@ -10,6 +10,7 @@
         "outDir": "dist"
     },
     "include": ["src"],
+    "exclude": ["testProject"],
     "references": [
         { "path": "../ast" }
     ]
