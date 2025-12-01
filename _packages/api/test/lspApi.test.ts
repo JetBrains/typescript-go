@@ -3,62 +3,104 @@ import { Buffer } from "node:buffer"
 import fs from "node:fs"
 import subprocess from "node:child_process"
 import path from "node:path"
-import { afterEach, beforeEach, suite, test } from "node:test"
+import { afterEach, before, beforeEach, suite, test, type TestContext } from "node:test"
 import url from "node:url"
 import type { Range } from 'vscode-languageserver-types'
-import type { Type, Symbol, Node, TypeReference, GenericType, UnionType, LiteralType, IndexType, IndexedAccessType, ConditionalType, SubstitutionType, ObjectType, PseudoBigInt, BigIntLiteralType, TemplateLiteral, TemplateLiteralType, TupleType, Signature, IndexInfo } from 'typescript'
+import type { Type, Symbol, Node, TypeReference, GenericType, UnionType, LiteralType, IndexType, IndexedAccessType, ConditionalType, SubstitutionType, ObjectType, PseudoBigInt, BigIntLiteralType, TemplateLiteral, TemplateLiteralType, TupleType, Signature, IndexInfo, __String, Declaration, SignatureDeclaration, SourceFile, LineAndCharacter, IndexSignatureDeclaration } from 'typescript'
 // @ts-expect-error
 import { TypeFlags } from '../src/typeFlags.ts'
+// @ts-expect-error
+import { SymbolFlags } from '../src/symbolFlags.ts'
 
-suite("TypeScriptGoServiceGetElementTypeTest", () => {
-  let client: LspClient | undefined
 
-  beforeEach(async () => {
-    try {
-      client = new LspClient()
-      await client.spawnAndInit()
-    } catch (e) {
-      await client?.kill()
-      client = undefined
-      throw e
-    }
+suite("TypeScriptGoServiceGetElementTypeTest", {}, () => {
+  const logFile = path.join(import.meta.dirname, "..", "tsgo.log")
+  const testProjectDir = path.join(import.meta.dirname, "..", "testProject")
+
+  before(async () => {
+    if (fs.existsSync(logFile))
+      await fs.promises.unlink(logFile)
   })
 
-  afterEach(async () => {
-    try {
-      await client?.shutdown()
-    } catch (e) {
-      await client?.kill()
-      throw e
-    } finally {
-      client = undefined
-    }
-  })
-
-  async function doTestElementType(content: string, elementText: string) {
-    client!.didOpen("a.ts", content)
-    return await client!.getElementType("a.ts", getRange(content, elementText))
+  type MyContext = TestContext & {
+    client?: LspClient
   }
 
+  beforeEach(async ctx => {
+    try {
+      const client = new LspClient(ctx.name, logFile, testProjectDir)
+      await client.spawnAndInit();
+      (ctx as MyContext).client = client
+    } catch (e) {
+      await (ctx as MyContext).client?.kill();
+      (ctx as MyContext).client = undefined
+      throw e
+    }
+  })
 
-  test("testNumber", async () => {
-    const type = await doTestElementType("declare const foo: number", "foo")
+  afterEach(async ctx => {
+    try {
+      await (ctx as MyContext).client?.shutdown()
+    } catch (e) {
+      await (ctx as MyContext).client?.kill()
+      throw e
+    } finally {
+      (ctx as MyContext).client = undefined
+    }
+  })
+
+  async function doTestElementType(ctx: TestContext, content: string, elementText: string) {
+    (ctx as MyContext).client!.didOpen("a.ts", content)
+    return await (ctx as MyContext).client!.getElementType("a.ts", getRange(content, elementText))
+  }
+
+  // *** Tests ***
+
+  test("testAny", async ctx => {
+    const type = await doTestElementType(ctx, "let foo", "foo")
+    assert.strictEqual(type.flags, TypeFlags.Any)
+  })
+
+  test("testUnknown", async ctx => {
+    const type = await doTestElementType(ctx, "let foo: unknown", "foo")
+    assert.strictEqual(type.flags, TypeFlags.Unknown)
+  })
+
+  test("testUndefined", async ctx => {
+    const type = await doTestElementType(ctx, "let foo: undefined", "foo")
+    assert.strictEqual(type.flags, 32768)
+  })
+
+  test("testNumber", async ctx => {
+    const type = await doTestElementType(ctx, "declare const foo: number", "foo")
     // 8 is a converted flag, use direct instead
     assert.strictEqual(type.flags, 8)
   })
 
-  test("testNumberLiteral", async () => {
-    const type = await doTestElementType("const foo = 123", "foo")
+  test("testNumberLiteral", async ctx  => {
+    const type = await doTestElementType(ctx, "const foo = 123", "foo")
     // 256 is a converted flag
     assert.strictEqual(type.flags, 256)
     assert.strictEqual((type as LiteralType).value, 123)
   })
 
-  test("testObjectOptionalProperty", async () => {
-    const type = await doTestElementType("type Foo = {x?: 1}", "Foo")
+  test("testStringType", async ctx => {
+    const type = await doTestElementType(ctx, "declare const foo: string", "foo")
+    assert.strictEqual(type.flags, 4)
+  })
+
+  test("testObjectOptionalProperty", async ctx => {
+    const type = await doTestElementType(ctx, "type Foo = {x?: 123}", "Foo")
     assert.strictEqual(type.flags, TypeFlags.Object)
-    assert.strictEqual((type as ObjectType).objectFlags, 16);
-    assert.deepStrictEqual(await (type as TypeEx).getPropertiesEx(), [{}]) // wip mapping
+    assert.strictEqual((type as ObjectType).objectFlags, 16)
+
+    const properties = await (type as TypeEx).getPropertiesEx()
+    assert.strictEqual(properties.length, 1)
+    const [xProperty] = properties
+    assert.strictEqual(xProperty.escapedName, "x")
+    assert.strictEqual(xProperty.name, "x")
+    assert.strictEqual(xProperty.flags, SymbolFlags.Property | SymbolFlags.Optional)
+    
     assert.deepStrictEqual(await (type as TypeEx).getCallSignaturesEx(), [])
     assert.deepStrictEqual(await (type as TypeEx).getConstructSignaturesEx(), [])
   })
@@ -121,10 +163,18 @@ type TypeRequestKind = "Default" | "Contextual" | "ContextualCompletions"
  * (didOpen etc) and type requests via the custom `handleCustomTsServerCommand` LSP handler.
  */
 class LspClient {
-  testProjectDir = path.join(import.meta.dirname, "..", "testProject")
+  #testName: string
+  #logFile: string
+  #testProjectDir: string
+
+  constructor(testName: string, logFile: string, testProjectDir: string) {
+    this.#testName = testName
+    this.#logFile = logFile
+    this.#testProjectDir = testProjectDir
+  }
 
   async spawnAndInit() {
-    await this.#openLogFileForWriting()
+    await this.#openLog()
     this.#spawnSubprocess()
     this.#addStderrHandler()
     this.#addStdoutHandler()
@@ -134,8 +184,8 @@ class LspClient {
       method: "initialize",
       params: {
         processId: process.pid,
-        rootPath: this.testProjectDir,
-        rootUri: url.pathToFileURL(this.testProjectDir),
+        rootPath: this.#testProjectDir,
+        rootUri: url.pathToFileURL(this.#testProjectDir),
         capabilities: {},
         clientInfo: { name: "LSP API Test" },
       },
@@ -146,9 +196,9 @@ class LspClient {
 
   #logFileHandle: fs.promises.FileHandle | undefined
   #logFileWritingPromise: Promise<unknown> | undefined
-  async #openLogFileForWriting() {
-    const logFile = path.join(import.meta.dirname, "..", "tsgo.log")
-    this.#logFileHandle = await fs.promises.open(logFile, "w")
+  async #openLog() {
+    this.#logFileHandle = await fs.promises.open(this.#logFile, "a")
+    this.#log("---", `Starting test: ${this.#testName}`)
   }
 
   async #log(src: string, msg: string) {
@@ -168,7 +218,7 @@ class LspClient {
   #spawnSubprocess() {
     const tsgoExec = path.join(import.meta.dirname, "..", "..", "..", "built", "local", "tsgo")
     const args = [ "--lsp", "--stdio" ]
-    this.#log("---", `Starting ${tsgoExec} with args [${args.join(", ")}]`)
+    this.#log("---", `Spawning ${tsgoExec} with args [${args.join(", ")}]`)
     this.#childProcess = subprocess.execFile(tsgoExec, args)
     this.#log("---", `The subprocess started with pid ${this.#childProcess.pid}`)
   }
@@ -244,7 +294,7 @@ class LspClient {
   }
 
   #getFileUri(fileRelName: string) {
-    return url.pathToFileURL(path.join(this.testProjectDir, fileRelName))
+    return url.pathToFileURL(path.join(this.#testProjectDir, fileRelName))
   }
 
   #_nextId = 0
@@ -308,15 +358,19 @@ class LspClient {
     await this.#sendRequest({jsonrpc: "2.0", id: this.#nextId(), method: "shutdown"})
     this.#sendMessage({jsonrpc: "2.0", method: "exit"})
     while (this.#childProcess!.exitCode == null) await delay(50)
-    await this.#log("---", `The subprocess exited with code ${this.#childProcess!.exitCode}`)
-    await this.#logFileHandle!.close();
+    await this.#closeLog()
     this.#rejectAllPendingRequests(new Error("The subprocess exited"))
   }
 
   async kill() {
     this.#childProcess!.kill()
-    await this.#logFileHandle!.close()
+    await this.#closeLog()
     this.#rejectAllPendingRequests(new Error("The subprocess was killed"))
+  }
+
+  async #closeLog() {
+    await this.#log("---", `Finished test: ${this.#testName}`)
+    await this.#logFileHandle!.close();
   }
 
   #rejectAllPendingRequests(reason: any) {
@@ -407,6 +461,35 @@ type TypeEx = Type & {
   resolvedFalseType?: Type
   resolvedProperties?: Symbol[]
   resolvedTrueType?: Type
+}
+
+type SymbolEx = Symbol & {
+  /**
+   * TransientSymbol.links.type
+   */
+  type: Type
+}
+
+type SignatureEx = Signature & {
+  /**
+   * Internal fields
+   */
+  flags: number
+  /**
+   * checker.getReturnTypeOfSignature()
+   */
+  resolvedReturnType: Type
+}
+
+type NodeEx = Node & {
+  /**
+   * ts.isComputedPropertyName()
+   */
+  computedProperty: boolean
+  /**
+   * instead of pos, end
+   */
+  range: {start: LineAndCharacter, end: LineAndCharacter}
 }
 
 type ClientObject = Type | Symbol | Signature | IndexInfo | Node | PseudoBigInt
@@ -521,7 +604,7 @@ function convertToClientObject(rootServerObject: ServerObject, lspClient: LspCli
         (target as LiteralType).value = serverType.value
     }
 
-    // Returned by "getPropertiesOfType"
+    // Returned by "getPropertiesOfType" (alphabetically)
 
     if ("callSignatures" in serverType && isSignatures(serverType.callSignatures))
       (target as TypeEx).callSignatures = serverType.callSignatures
@@ -530,6 +613,10 @@ function convertToClientObject(rootServerObject: ServerObject, lspClient: LspCli
     if ("constructSignatures" in serverType && isSignatures(serverType.constructSignatures))
       (target as TypeEx).constructSignatures = serverType.constructSignatures
         .map(sig => resolveOrConvert(sig, convertSignature))
+
+    if ("indexInfos" in serverType && isIndexInfos(serverType.indexInfos))
+      (target as TypeEx).indexInfos = serverType.indexInfos
+        .map(info => resolveOrConvert(info, convertIndexInfo))
 
     if ("properties" in serverType && isSymbols(serverType.properties))
       (target as TypeEx).properties = serverType.properties
@@ -544,10 +631,6 @@ function convertToClientObject(rootServerObject: ServerObject, lspClient: LspCli
 
     if ("resolvedTrueType" in serverType && isType(serverType.resolvedTrueType))
       (target as TypeEx).resolvedTrueType = resolveOrConvert(serverType.resolvedTrueType, convertType)
-
-    if ("indexInfos" in serverType && isIndexInfos(serverType.indexInfos))
-      (target as TypeEx).indexInfos = serverType.indexInfos
-        .map(info => resolveOrConvert(info, convertIndexInfo))
 
     // Methods
 
@@ -573,29 +656,90 @@ function convertToClientObject(rootServerObject: ServerObject, lspClient: LspCli
   }
 
   function convertSymbol(symbolServerObj: ServerSymbol, target: Symbol): Symbol {
-    // wip
+    if ("declarations" in symbolServerObj && isNodes(symbolServerObj.declarations))
+      target.declarations = symbolServerObj.declarations
+        .map(node => resolveOrConvert(node, convertNode) as Declaration)
+
+    if ("escapedName" in symbolServerObj && typeof symbolServerObj.escapedName === 'string') {
+      target.escapedName = symbolServerObj.escapedName as __String
+      (target as {name: string}).name = symbolServerObj.escapedName
+    }
+
+    if ("flags" in symbolServerObj && typeof symbolServerObj.flags === 'number')  
+      target.flags = symbolServerObj.flags    
+
+    if ("type" in symbolServerObj && isType(symbolServerObj.type))
+      (target as SymbolEx).type = resolveOrConvert(symbolServerObj.type, convertType)
+
+    if ("valueDeclaration" in symbolServerObj && isNode(symbolServerObj.valueDeclaration))
+      target.valueDeclaration = resolveOrConvert(symbolServerObj.valueDeclaration, convertNode) as Declaration
+
     return target
   }
 
   function convertSignature(signatureServerObj: ServerSignature, target: Signature): Signature {
-    // wip
-    return target
-  }
+    if ("declaration" in signatureServerObj && isNode(signatureServerObj.declaration))
+      target.declaration = resolveOrConvert(signatureServerObj.declaration, convertNode) as SignatureDeclaration
 
-  function convertIndexInfo(indexInfoServerObj: ServerIndexInfo, target: IndexInfo): IndexInfo {
-    // wip
+    if ("flags" in signatureServerObj && typeof signatureServerObj.flags === "number")
+      (target as SignatureEx).flags = signatureServerObj.flags
+
+    if ("parameters" in signatureServerObj && isSymbols(signatureServerObj.parameters))
+      target.parameters = signatureServerObj.parameters
+        .map(sym => resolveOrConvert(sym, convertSymbol))
+
+    if ("resolvedReturnType" in signatureServerObj && isType(signatureServerObj.resolvedReturnType))
+      (target as SignatureEx).resolvedReturnType = resolveOrConvert(signatureServerObj.resolvedReturnType, convertType)
+
+    if ("typeParameters" in signatureServerObj && isTypes(signatureServerObj.typeParameters))
+      target.typeParameters = signatureServerObj.typeParameters
+        .map(type => resolveOrConvert(type, convertType))
+
     return target
   }
 
   function convertNode(nodeServerObj: ServerNode, target: Node): Node {
-    // wip
+    if ("computedProperty" in nodeServerObj && typeof nodeServerObj.computedProperty === "boolean")
+      (target as NodeEx).computedProperty = nodeServerObj.computedProperty
+
+    if ("fileName" in nodeServerObj && typeof nodeServerObj.fileName === "string")
+      (target as SourceFile).fileName = nodeServerObj.fileName
+
+    if ("parent" in nodeServerObj && isNode(nodeServerObj.parent))
+      (target as {parent: Node}).parent = resolveOrConvert(nodeServerObj.parent, convertNode)
+
+    if ("range" in nodeServerObj && typeof nodeServerObj.range === "object")
+      (target as NodeEx).range = nodeServerObj.range as NodeEx["range"]
+
     return target
   }
 
   function convertPseudoBigInt(pseudoBigIntServerObj: ServerOtherObject, target: PseudoBigInt): PseudoBigInt {
-    // wip
+    if ("negative" in pseudoBigIntServerObj && typeof pseudoBigIntServerObj.negative === "boolean")
+      target.negative = pseudoBigIntServerObj.negative
+
+    if ("base10Value" in pseudoBigIntServerObj && typeof pseudoBigIntServerObj.base10Value === "string")
+      target.base10Value = pseudoBigIntServerObj.base10Value
+
     return target
   }
+
+  function convertIndexInfo(indexInfoServerObj: ServerIndexInfo, target: IndexInfo): IndexInfo {
+    if ("declaration" in indexInfoServerObj && isNode(indexInfoServerObj.declaration))
+      target.declaration = resolveOrConvert(indexInfoServerObj.declaration, convertNode) as IndexSignatureDeclaration
+
+    if ("isReadonly" in indexInfoServerObj && typeof indexInfoServerObj.isReadonly === "boolean")
+      target.isReadonly = indexInfoServerObj.isReadonly
+
+    if ("keyType" in indexInfoServerObj && isType(indexInfoServerObj.keyType))
+      target.keyType = resolveOrConvert(indexInfoServerObj.keyType, convertType)
+
+    if ("type" in indexInfoServerObj && isType(indexInfoServerObj.type))
+      target.type = resolveOrConvert(indexInfoServerObj.type, convertType)
+
+    return target
+  }
+
 
   function isType(serverObject: unknown): serverObject is ServerType {
     return (serverObject as ServerType).ideObjectType === "TypeObject"
@@ -621,6 +765,14 @@ function convertToClientObject(rootServerObject: ServerObject, lspClient: LspCli
     return Array.isArray(serverObject) && serverObject.every(isSignature)
   }
 
+  function isNode(serverObject: unknown): serverObject is ServerNode {
+    return (serverObject as ServerNode).ideObjectType === "NodeObject"
+  }
+
+  function isNodes(serverObject: unknown): serverObject is ServerNode[] {
+    return Array.isArray(serverObject) && serverObject.every(isNode)
+  }
+
   function isIndexInfo(serverObject: unknown): serverObject is ServerIndexInfo {
     return (serverObject as ServerIndexInfo).ideObjectType === "IndexInfo"
   }
@@ -629,15 +781,11 @@ function convertToClientObject(rootServerObject: ServerObject, lspClient: LspCli
     return Array.isArray(serverObject) && serverObject.every(isIndexInfo)
   }
 
-  function isNode(serverObject: unknown): serverObject is ServerNode {
-    return (serverObject as ServerNode).ideObjectType === "NodeObject"
-  }
-
   function isOtherObject(serverObject: unknown): serverObject is ServerOtherObject {
-    return (serverObject as ServerObjectDef).ideObjectId != null
-      && !isType(serverObject)
-      && !isSymbol(serverObject)
-      && !isNode(serverObject)
+    return serverObject != null
+      && (serverObject as ServerObjectDef).ideObjectId != null
+      && typeof serverObject === 'object'
+      && !("ideObjectType" in serverObject)
   }
 
   function isStrings(serverObject: unknown): serverObject is string[] {
