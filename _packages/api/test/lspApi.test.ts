@@ -2,11 +2,11 @@ import assert from "node:assert"
 import { Buffer } from "node:buffer"
 import fs from "node:fs"
 import subprocess from "node:child_process"
-import path from "node:path"
+import path, { resolve } from "node:path"
 import { afterEach, before, beforeEach, suite, test, type TestContext } from "node:test"
 import url from "node:url"
 import type { Range } from 'vscode-languageserver-types'
-import type { Type, Symbol, Node, TypeReference, GenericType, UnionType, LiteralType, IndexType, IndexedAccessType, ConditionalType, SubstitutionType, ObjectType, PseudoBigInt, BigIntLiteralType, TemplateLiteral, TemplateLiteralType, TupleType, Signature, IndexInfo, __String, Declaration, SignatureDeclaration, SourceFile, LineAndCharacter, IndexSignatureDeclaration } from 'typescript'
+import type { Type, Symbol, Node, TypeReference, GenericType, UnionType, LiteralType, IndexType, IndexedAccessType, ConditionalType, SubstitutionType, ObjectType, PseudoBigInt, BigIntLiteralType, TemplateLiteral, TemplateLiteralType, TupleType, Signature, IndexInfo, __String, Declaration, SignatureDeclaration, SourceFile, LineAndCharacter, IndexSignatureDeclaration, server } from 'typescript'
 // @ts-expect-error
 import { TypeFlags } from '../src/typeFlags.ts'
 // @ts-expect-error
@@ -49,60 +49,170 @@ suite("TypeScriptGoServiceGetElementTypeTest", {}, () => {
     }
   })
 
-  async function doTestElementType(ctx: TestContext, content: string, elementText: string) {
+  async function getElementType(ctx: TestContext, content: string, elementText: string) {
     (ctx as MyContext).client!.didOpen("a.ts", content)
     return await (ctx as MyContext).client!.getElementType("a.ts", getRange(content, elementText))
   }
 
   // *** Tests ***
 
-  test("testAny", async ctx => {
-    const type = await doTestElementType(ctx, "let foo", "foo")
+  test("any", async ctx => {
+    const type = await getElementType(ctx, "let foo", "foo")
     assert.strictEqual(type.flags, TypeFlags.Any)
   })
 
-  test("testUnknown", async ctx => {
-    const type = await doTestElementType(ctx, "let foo: unknown", "foo")
+  test("unknown", async ctx => {
+    const type = await getElementType(ctx, "let foo: unknown", "foo")
     assert.strictEqual(type.flags, TypeFlags.Unknown)
   })
 
-  test("testUndefined", async ctx => {
-    const type = await doTestElementType(ctx, "let foo: undefined", "foo")
+  test("undefined", async ctx => {
+    const type = await getElementType(ctx, "let foo: undefined", "foo")
     assert.strictEqual(type.flags, 32768)
   })
 
-  test("testNumber", async ctx => {
-    const type = await doTestElementType(ctx, "declare const foo: number", "foo")
+  test("number", async ctx => {
+    const type = await getElementType(ctx, "declare const foo: number", "foo")
     // 8 is a converted flag, use direct instead
     assert.strictEqual(type.flags, 8)
   })
 
-  test("testNumberLiteral", async ctx  => {
-    const type = await doTestElementType(ctx, "const foo = 123", "foo")
+  test("numberLiteral", async ctx  => {
+    const type = await getElementType(ctx, "const foo = 123", "foo")
     // 256 is a converted flag
     assert.strictEqual(type.flags, 256)
     assert.strictEqual((type as LiteralType).value, 123)
   })
 
-  test("testStringType", async ctx => {
-    const type = await doTestElementType(ctx, "declare const foo: string", "foo")
+  test("string", async ctx => {
+    const type = await getElementType(ctx, "declare const foo: string", "foo")
     assert.strictEqual(type.flags, 4)
   })
 
-  test("testObjectOptionalProperty", async ctx => {
-    const type = await doTestElementType(ctx, "type Foo = {x?: 123}", "Foo")
+  test("stringLiteral", async ctx => {
+    const type = await getElementType(ctx, "declare const foo: '1'", "foo")
+    assert.strictEqual(type.flags, 128)
+    assert.strictEqual((type as LiteralType).value, "1")
+  })
+
+  test("function", async ctx => {
+    const content = "function foo(x: number): string {}"
+    const type = await getElementType(ctx, content, "foo")
+    assert.strictEqual(type.flags, TypeFlags.Object)
+    assert.strictEqual((type as ObjectType).objectFlags, 16 /* anonymous */)
+    assert.strictEqual(getFragment(content, type.symbol.declarations![0]), content)
+
+    const [callSignature] = await (type as TypeEx).getCallSignaturesEx()
+    assert.strictEqual(callSignature.parameters[0].name, "x")
+    assert.strictEqual((callSignature as SignatureEx).resolvedReturnType.flags, 4)
+  })
+
+  test("objectOptionalProperty", async ctx => {
+    const content = "type Foo = {x?:\n  123}"
+
+    const type = await getElementType(ctx, content, "Foo")
     assert.strictEqual(type.flags, TypeFlags.Object)
     assert.strictEqual((type as ObjectType).objectFlags, 16)
 
     const properties = await (type as TypeEx).getPropertiesEx()
     assert.strictEqual(properties.length, 1)
+
     const [xProperty] = properties
     assert.strictEqual(xProperty.escapedName, "x")
     assert.strictEqual(xProperty.name, "x")
     assert.strictEqual(xProperty.flags, SymbolFlags.Property | SymbolFlags.Optional)
-    
+
+    assert.strictEqual(xProperty.declarations?.length, 1)
+    const [xDeclaration] = xProperty.declarations
+    assert.strictEqual(getFragment(content, xDeclaration), "x?:\n  123")
+
     assert.deepStrictEqual(await (type as TypeEx).getCallSignaturesEx(), [])
     assert.deepStrictEqual(await (type as TypeEx).getConstructSignaturesEx(), [])
+  })
+
+  test("genericArguments", async ctx => {
+    const content = "type Foo<T> = {x: T}"
+    const type = await getElementType(ctx, content, "Foo<T>")
+
+    const [tArg] = type.aliasTypeArguments!
+    assert.strictEqual(tArg.flags, TypeFlags.TypeParameter)
+
+    const {symbol} = tArg
+    assert.strictEqual(symbol.name, "T")
+    assert.strictEqual(symbol.escapedName, "T")
+    assert.strictEqual(symbol.flags, SymbolFlags.TypeParameter)
+    assert.strictEqual(getFragment(content, symbol.declarations![0]), "T")
+  })
+
+  test("conditionalType", async ctx => {
+    const content = `type Foo<T> = T extends string ? '1' : 1`
+
+    const type = await getElementType(ctx, content, "Foo<T>")
+    assert.strictEqual(type.flags, TypeFlags.Conditional)
+
+    const {aliasSymbol} = type
+    assert.strictEqual(aliasSymbol!.flags, TypeFlags.Object)
+    assert.strictEqual(aliasSymbol!.name, "Foo")
+    assert.strictEqual(aliasSymbol!.escapedName, "Foo")
+
+    const {extendsType} = type as ConditionalType
+    assert.strictEqual(extendsType.flags, 4)
+
+    const resolvedTrueType = await (type as TypeEx).getResolvedTrueTypeEx()
+    assert.strictEqual(resolvedTrueType.flags, 128)
+    assert.strictEqual((resolvedTrueType as LiteralType).value, "1")
+
+    const resolvedFalseType = await (type as TypeEx).getResolvedFalseTypeEx()
+    assert.strictEqual(resolvedFalseType.flags, 256)
+    assert.strictEqual((resolvedFalseType as LiteralType).value, 1)
+  })
+
+  test("unionType", async ctx => {
+    const content = "type Foo = 1 | 2"
+    const type = await getElementType(ctx, content, "Foo")
+    assert.strictEqual(type.flags, TypeFlags.Union)
+    const {types} = (type as UnionType)
+    assert.strictEqual(types.length, 2)
+    const [one, two] = types
+
+    assert.strictEqual(one.flags, 256)
+    assert.strictEqual((one as LiteralType).value, 1)
+
+    assert.strictEqual(two.flags, 256)
+    assert.strictEqual((two as LiteralType).value, 2)
+  })
+
+  test("symbolType", async ctx => {
+    const content = "type Foo = {a: 5}"
+    const type = await getElementType(ctx, content, "Foo")
+    assert.strictEqual(type.flags, TypeFlags.Object)
+
+    const [aProperty] = await (type as TypeEx).getPropertiesEx()
+    assert.strictEqual(aProperty.name, "a")
+
+    const aType = await (aProperty as SymbolEx).getTypeEx()
+    assert.strictEqual(aType.flags, 256)
+    assert.strictEqual((aType as LiteralType).value, 5)
+  })
+
+  test("cachedTypes", async ctx => {
+    const content = "type Foo<T> = T extends 1 ? 1 : 1"
+    const type = await getElementType(ctx, content, "Foo")
+
+    const trueType = await (type as TypeEx).getResolvedTrueTypeEx()
+    const falseType = await (type as TypeEx).getResolvedFalseTypeEx()
+
+     // === because the link ideObjectIdRef existing within the same response
+    assert.strictEqual(trueType, falseType)
+  })
+
+  test("repeatedRequest", async ctx => {
+    const content = "type Foo = {a: 12}"
+    const type0 = await getElementType(ctx, content, "Foo")
+    const type1 = await getElementType(ctx, content, "Foo")
+
+    // === because caching between requests
+    assert.strictEqual(type0, type1)
   })
 })
 
@@ -115,7 +225,6 @@ function getRange(text: string, element: string) {
   const lines = text.split("\n")
   const posIndices = lines
     .map(line => line.indexOf(element))
-    .filter(index => index !== -1)
 
   const lineIndex = posIndices.findIndex(pos => pos !== -1)
   if (lineIndex === -1)
@@ -127,13 +236,26 @@ function getRange(text: string, element: string) {
   }
 }
 
+function getFragment(content: string, node: Node) {
+  const range = (node as NodeEx).range
+  const lines = content.split("\n")
+
+  if (range.start.line === range.end.line)
+    return lines[range.start.line].slice(range.start.character, range.end.character)
+
+  const startLineFragment = lines[range.start.line].slice(range.start.character)
+  const endLineFragment = lines[range.end.line].slice(0, range.end.character)
+  const midLines = lines.slice(range.start.line + 1, range.end.line)
+  return [startLineFragment, ...midLines, endLineFragment].join("\n")
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms)
   })
 }
 
-// *** Client ***
+// *** Protocol ***
 
 interface Message {
 	jsonrpc: "2.0"
@@ -156,12 +278,128 @@ interface NotificationMessage extends Message {
   params?: unknown[] | object
 }
 
+// *** Types ***
+
 type TypeRequestKind = "Default" | "Contextual" | "ContextualCompletions"
 
+type ServerObjectDef = {ideObjectId: number}
+type ServerObjectRef = {ideObjectIdRef: number}
+
+type ServerType = ServerObjectDef & {
+  ideObjectType: "TypeObject"
+  id: number
+  ideProjectId: number
+  ideTypeCheckerId: number
+}
+type ServerSymbol = ServerObjectDef & {
+  ideObjectType: "SymbolObject"
+  id: number
+  ideProjectId: number
+  ideTypeCheckerId: number
+}
+
+type ServerSignature = ServerObjectDef & {
+  ideObjectType: "SignatureObject"
+}
+
+type ServerIndexInfo = ServerObjectDef & {
+  ideObjectType: "IndexInfo"
+}
+
+type ServerNode = ServerObjectDef & {
+  ideObjectType: "NodeObject"
+}
+
+type ServerOtherObject = ServerObjectDef & {}
+
+type ServerObject = ServerObjectRef | ServerType | ServerSymbol | ServerIndexInfo | ServerNode | ServerOtherObject
+
 /**
- * This is a simplistic client model modelling the IDE which sends to TS-Go both standard LSP requests
- * (didOpen etc) and type requests via the custom `handleCustomTsServerCommand` LSP handler.
+ * These are properties which were formerly received via Checker, Type etc methods and properties.
+ * Some of them were internal.
+ * 
+ * They can be moved now to the `handleCustomTsServerCommand` handler.
  */
+type TypeEx = Type & {
+  /**
+   * Type.id
+   */
+  id: number
+  /**
+   * Checker.getResolvedTypeArguments()
+   */
+  resolvedTypeArguments?: Type[]
+  /**
+   * Checker.getBaseConstraintsOfType()
+   */
+  constraint?: Type
+  /**
+   * This is enumQualifiedName received from Nodes structure
+   */
+  nameType?: string
+  /**
+   * Property of TypeParameter
+   */
+  isThisType?: boolean
+  /**
+   * Property of IntrinsicType
+   */
+  intrinsicName?: string
+
+  /**
+   * Async versions of Type.get...() methods
+   */
+  getCallSignaturesEx(): Promise<Signature[]>
+  getConstructSignaturesEx(): Promise<Signature[]>
+  getPropertiesEx(): Promise<Symbol[]>
+  getResolvedFalseTypeEx(): Promise<Type>
+  getResolvedTrueTypeEx(): Promise<Type>
+ 
+  /**
+   * Results of 'getTypeProperties'
+   */
+  callSignatures?: Signature[]
+  constructSignatures?: Signature[]
+  indexInfos?: IndexInfo[]
+  properties?: Symbol[]
+  resolvedFalseType?: Type
+  resolvedProperties?: Symbol[]
+  resolvedTrueType?: Type
+}
+
+type SymbolEx = Symbol & {
+  /**
+   * Checker.getTypeOfSymbolAtLocation()
+   */
+  getTypeEx(): Promise<Type>
+}
+
+type SignatureEx = Signature & {
+  /**
+   * Internal fields
+   */
+  flags: number
+  /**
+   * checker.getReturnTypeOfSignature()
+   */
+  resolvedReturnType: Type
+}
+
+type NodeEx = Node & {
+  /**
+   * ts.isComputedPropertyName()
+   */
+  computedProperty: boolean
+  /**
+   * instead of pos, end
+   */
+  range: {start: LineAndCharacter, end: LineAndCharacter}
+}
+
+type ClientObject = Type | Symbol | Signature | IndexInfo | Node | PseudoBigInt
+
+// *** Client ***
+
 class LspClient {
   #testName: string
   #logFile: string
@@ -218,7 +456,7 @@ class LspClient {
   #spawnSubprocess() {
     const tsgoExec = path.join(import.meta.dirname, "..", "..", "..", "built", "local", "tsgo")
     const args = [ "--lsp", "--stdio" ]
-    this.#log("---", `Spawning ${tsgoExec} with args [${args.join(", ")}]`)
+    this.#log("---", `Spawning "${tsgoExec}" with args [${args.join(", ")}]`)
     this.#childProcess = subprocess.execFile(tsgoExec, args)
     this.#log("---", `The subprocess started with pid ${this.#childProcess.pid}`)
   }
@@ -333,7 +571,7 @@ class LspClient {
         }
       }
     })
-    return convertToClientObject(response.result.response, this, file) as Type
+    return this.#convertToClientObject(response.result.response, file) as Type
   }
 
   async getTypeProperties(
@@ -351,7 +589,399 @@ class LspClient {
         args: { typeId, ideProjectId, ideTypeCheckerId, originalRequestUri},
       }
     })
-    return convertToClientObject(response.result.response, this) as Type
+    return this.#convertToClientObject(response.result.response) as Type
+  }
+
+  async getSymbolType(
+    symbolId: number,
+    ideProjectId: number,
+    ideTypeCheckerId: number,
+  ) {
+    const response = await this.#sendRequest({
+      jsonrpc: "2.0",
+      id: this.#nextId(),
+      method: "$/ij/handleCustomTsServerCommand",
+      params: {
+        ideCommand: "ideGetSymbolType",
+        args: { symbolId, ideProjectId, ideTypeCheckerId },
+      }
+    })
+    return this.#convertToClientObject(response.result.response) as Type
+  }
+
+  #resolveMapBetweenRequests = new Map<number, ClientObject>()
+
+  #convertToClientObject(rootServerObject: ServerObject, fileUri?: URL): ClientObject {
+    const ths = this
+
+    const resolveMapWithinSameResponse = new Map<number, {serverObject: ServerObject, clientObject: ClientObject}>()
+
+    function resolveOrConvert<From extends ServerObject, To extends ClientObject>(
+      serverObject: From,
+      converter: (serverObj: From, clientObj: To) => To,
+    ): To {
+      const {ideObjectIdRef} = serverObject as ServerObjectRef
+      if (ideObjectIdRef != null) {
+        const objs = resolveMapWithinSameResponse.get(ideObjectIdRef)
+        if (!objs)
+          throw new Error(`Could not resolve reference ${ideObjectIdRef} in ${JSON.stringify(serverObject)}`)
+        return objs.clientObject as To
+      }
+
+      const {ideObjectId} = serverObject as ServerObjectDef
+      if (ideObjectId != null) {
+        if (resolveMapWithinSameResponse.has(ideObjectId))
+          throw new Error(`Duplicate ideObjectId ${ideObjectId} in ${JSON.stringify(serverObject)}`)
+
+        const clientObject = {} as To
+        resolveMapWithinSameResponse.set(ideObjectId, {serverObject, clientObject})
+        if (isType(serverObject))
+          ths.#resolveMapBetweenRequests.set(serverObject.id, clientObject)
+        converter(serverObject, clientObject)
+        return clientObject
+      }
+
+      if (isType(serverObject)) {
+        const convertedEarlier = ths.#resolveMapBetweenRequests.get(serverObject.id)
+        if (convertedEarlier)
+          return convertedEarlier as To
+      }
+
+      throw new Error(`Could not convert or resolve ${JSON.stringify(serverObject)}`)
+    }
+
+    function convertType(typeServerObj: ServerType, target: Type): Type {
+
+      // Properties must be processed in order because definitions come before refs
+      for (const [key, value] of Object.entries(typeServerObj)) {
+
+        // Properties returned by both "ideGetElementType" and "getPropertiesOfType"
+        if (key === "flags" && typeof value === "number")
+          target.flags = value as number  
+
+        else if (key === "id" && typeof value === "number")
+          (target as TypeEx).id = value
+
+        else if (key === "objectFlags" && typeof value === "number")
+          (target as ObjectType).objectFlags = value as number
+
+        // Returned by "ideGetElementType" (alphabetically)
+        else if (key === "aliasSymbol" && isSymbol(value))
+          target.aliasSymbol = resolveOrConvert(value, convertSymbol)
+
+        else if (key === "aliasTypeArguments" && isTypes(value))
+          target.aliasTypeArguments = value
+            .map(arg => resolveOrConvert(arg, convertType))
+
+        else if (key === "baseType" && isType(value))
+          (target as SubstitutionType).baseType = resolveOrConvert(value, convertType)
+
+        else if (key === "checkType" && isType(value))
+          (target as ConditionalType).checkType = resolveOrConvert(value, convertType)
+
+        else if (key === "constraint" && isType(value))
+          (target as TypeEx).constraint = resolveOrConvert(value, convertType)
+
+        else if (key === "elementFlags" && isNumbers(value))
+          (target as TupleType).elementFlags = value
+
+        else if (key === "extendsType" && isType(value))
+          (target as ConditionalType).extendsType = resolveOrConvert(value, convertType)
+
+        else if (key === "freshType" && isType(value))
+          (target as LiteralType).freshType = resolveOrConvert(value, convertType) as LiteralType
+
+        else if (key === "indexType" && isType(value))
+          (target as IndexedAccessType).indexType = resolveOrConvert(value, convertType)
+
+        else if (key === "intrinsicName" && typeof value === "string")
+          (target as TypeEx).intrinsicName = value
+
+        else if (key === "isThisType" && typeof value === "boolean")
+          (target as TypeEx).isThisType = value
+
+        else if (key === "nameType" && typeof value === "string")
+          (target as TypeEx).nameType = value
+
+        else if (key === "objectType" && isType(value))
+          (target as IndexedAccessType).objectType = resolveOrConvert(value, convertType)
+
+        else if (key === "resolvedTypeArguments" && isTypes(value))
+          (target as TypeEx).resolvedTypeArguments = value
+            .map(t => resolveOrConvert(t, convertType))
+
+        else if (key === "symbol" && isSymbol(value))
+          target.symbol = resolveOrConvert(value, convertSymbol)
+
+        else if (key === "target" && isType(value))
+          (target as TypeReference).target = resolveOrConvert(value, convertType) as GenericType
+
+        else if (key === "texts" && isStrings(value))
+          (target as TemplateLiteralType).texts = value
+
+        else if (key === "type" && isType(value))
+          (target as IndexType).type = resolveOrConvert(value, convertType)
+
+        else if (key === "types"&& isTypes(value))
+          (target as UnionType).types = value
+            .map(t => resolveOrConvert(t, convertType))
+
+        else if (key === "value") {
+          if (isOtherObject(value))
+            (target as BigIntLiteralType).value = resolveOrConvert(value, convertPseudoBigInt)
+          if (typeof value === "string" || typeof value === "number")
+            (target as LiteralType).value = value
+        }
+
+        // Returned by "getPropertiesOfType" (alphabetically)
+
+        else if (key === "callSignatures" && isSignatures(value))
+          (target as TypeEx).callSignatures = value
+            .map(sig => resolveOrConvert(sig, convertSignature))
+
+        else if (key === "constructSignatures" && isSignatures(value))
+          (target as TypeEx).constructSignatures = value
+            .map(sig => resolveOrConvert(sig, convertSignature))
+
+        else if (key === "indexInfos" && isIndexInfos(value))
+          (target as TypeEx).indexInfos = value
+            .map(info => resolveOrConvert(info, convertIndexInfo))
+
+        else if (key === "properties" && isSymbols(value))
+          (target as TypeEx).properties = value
+            .map(sym => resolveOrConvert(sym, convertSymbol))
+
+        else if (key === "resolvedFalseType" && isType(value))
+          (target as TypeEx).resolvedFalseType = resolveOrConvert(value, convertType)
+
+        else if (key === "resolvedProperties" && isSymbols(value))
+          (target as TypeEx).resolvedProperties = value
+            .map(sym => resolveOrConvert(sym, convertSymbol))
+
+        else if (key === "resolvedTrueType" && isType(value))
+          (target as TypeEx).resolvedTrueType = resolveOrConvert(value, convertType)
+      }
+
+      // Adding methods
+
+      target.getFlags = () => target.flags
+      target.getSymbol = () => target.symbol
+
+      let typePropertiesResponse: Type | undefined
+      async function getTypeProperties() {
+        if (!typePropertiesResponse)
+          typePropertiesResponse = await ths.getTypeProperties(
+            typeServerObj.id,
+            typeServerObj.ideProjectId,
+            typeServerObj.ideTypeCheckerId,
+            fileUri,
+          )
+        return typePropertiesResponse as TypeEx
+      }
+
+      (target as TypeEx).getCallSignaturesEx = async () => (await getTypeProperties()).callSignatures!;
+      (target as TypeEx).getConstructSignaturesEx = async () => (await getTypeProperties()).constructSignatures!;
+      (target as TypeEx).getPropertiesEx = async () => (await getTypeProperties()).properties!;
+      (target as TypeEx).getResolvedFalseTypeEx = async () => (await getTypeProperties()).resolvedFalseType!;
+      (target as TypeEx).getResolvedTrueTypeEx = async () => (await getTypeProperties()).resolvedTrueType!;
+
+      return target
+    }
+
+    function convertSymbol(symbolServerObj: ServerSymbol, target: Symbol): Symbol {
+      // Processing in order
+
+      for (const [key, value] of Object.entries(symbolServerObj)) {
+        if (key === "declarations" && isNodes(value))
+          target.declarations = value
+            .map(node => resolveOrConvert(node, convertNode) as Declaration)
+
+            else if (key === "escapedName" && typeof value === 'string') {
+          target.escapedName = value as __String
+          (target as {name: string}).name = value
+        }
+
+        else if (key === "flags" && typeof value === 'number')  
+          target.flags = value    
+
+        else if (key === "valueDeclaration" && isNode(value))
+          target.valueDeclaration = resolveOrConvert(value, convertNode) as Declaration
+      }
+
+
+      // Method
+
+      let type: Type | undefined
+      async function getTypeImpl() {
+        if (isType(rootServerObject)) {
+          type ??= await ths.getSymbolType(symbolServerObj.id, rootServerObject.ideProjectId, rootServerObject.ideTypeCheckerId)
+          return type
+        } else {
+          throw new Error(`Root server object must be a type: ${JSON.stringify(rootServerObject)}`)
+        }
+      }
+
+      (target as SymbolEx).getTypeEx = async () => await getTypeImpl()
+
+      return target
+    }
+
+    function convertSignature(signatureServerObj: ServerSignature, target: Signature): Signature {
+      // Processing in order
+
+      for (const [key, value] of Object.entries(signatureServerObj)) {
+        if (key === "declaration" && isNode(value))
+          target.declaration = resolveOrConvert(value, convertNode) as SignatureDeclaration
+
+        else if (key === "flags" && typeof value === "number")
+          (target as SignatureEx).flags = value
+
+        else if (key === "parameters" && isSymbols(value))
+          target.parameters = value.map(sym => resolveOrConvert(sym, convertSymbol))
+    
+        else if (key === "resolvedReturnType" && isType(value))
+          (target as SignatureEx).resolvedReturnType = resolveOrConvert(value, convertType)
+
+        else if (key === "typeParameters" && isTypes(value))
+          target.typeParameters = value.map(type => resolveOrConvert(type, convertType))
+      }
+
+      return target
+    }
+
+    function convertNode(nodeServerObj: ServerNode, target: Node): Node {
+      for (const [key, value] of Object.entries(nodeServerObj)) {
+        if (key === "computedProperty" && typeof value === "boolean")
+          (target as NodeEx).computedProperty = value
+
+        else if (key === "fileName" && typeof value === "string")
+          (target as SourceFile).fileName = value
+
+        else if (key === "parent" && isNode(value))
+          (target as {parent: Node}).parent = resolveOrConvert(value, convertNode)
+
+        else if (key === "range" && typeof value === "object")
+          (target as NodeEx).range = value as NodeEx["range"]
+      }
+
+      return target
+    }
+
+    function convertPseudoBigInt(pseudoBigIntServerObj: ServerOtherObject, target: PseudoBigInt): PseudoBigInt {
+      for (const [key, value] of Object.entries(pseudoBigIntServerObj)) {
+        if (key === "negative" && typeof value === "boolean")
+          target.negative = value
+
+        else if (key === "base10Value" && typeof value === "string")
+          target.base10Value = value
+      }
+
+      return target
+    }
+
+    function convertIndexInfo(indexInfoServerObj: ServerIndexInfo, target: IndexInfo): IndexInfo {
+      for (const [key, value] of Object.entries(indexInfoServerObj)) {
+        if (key === "declaration" && isNode(value))
+          target.declaration = resolveOrConvert(value, convertNode) as IndexSignatureDeclaration
+
+        else if (key === "isReadonly" && typeof value === "boolean")
+          target.isReadonly = value
+
+        else if (key === "keyType" && isType(value))
+          target.keyType = resolveOrConvert(value, convertType)
+
+        else if (key === "type" && isType(value))
+          target.type = resolveOrConvert(value, convertType)
+      }
+
+      return target
+    }
+
+
+    function isType(serverObject: unknown): serverObject is ServerType {
+      const isTypeImpl = (o: unknown): o is ServerType => (o as ServerType).ideObjectType === "TypeObject"
+      return isTypeImpl(serverObject) || isRefTo(serverObject, isTypeImpl)
+    }
+
+    function isRefTo<T>(serverObject: unknown, defChecker: (obj: unknown) => obj is T): serverObject is T {
+      const {ideObjectIdRef} = serverObject as ServerObjectRef
+      if (ideObjectIdRef != null) {
+        const {serverObject} = resolveMapWithinSameResponse.get(ideObjectIdRef) ?? {}
+        return !!serverObject && defChecker(serverObject)
+      }
+      return false
+    }
+
+    function isTypes(serverObject: unknown): serverObject is ServerType[] {
+      return Array.isArray(serverObject) && serverObject.every(isType)
+    }
+
+    function isSymbol(serverObject: unknown): serverObject is ServerSymbol {
+      const isSymbolImpl = (o: unknown): o is ServerSymbol => (o as ServerSymbol).ideObjectType === "SymbolObject"
+      return isSymbolImpl(serverObject) || isRefTo(serverObject, isSymbolImpl)
+    }
+
+    function isSymbols(serverObject: unknown): serverObject is ServerSymbol[] {
+      return Array.isArray(serverObject) && serverObject.every(isSymbol)
+    }
+
+    function isSignature(serverObject: unknown): serverObject is ServerSignature {
+      const isSignatureImpl = (o: unknown): o is ServerSignature => (o as ServerSignature).ideObjectType === "SignatureObject"
+      return isSignatureImpl(serverObject) || isRefTo(serverObject, isSignatureImpl)
+    }
+
+    function isSignatures(serverObject: unknown): serverObject is ServerSignature[] {
+      return Array.isArray(serverObject) && serverObject.every(isSignature)
+    }
+
+    function isNode(serverObject: unknown): serverObject is ServerNode {
+      const isNodeImpl = (o: unknown): o is ServerNode => (o as ServerNode).ideObjectType === "NodeObject"
+      return isNodeImpl(serverObject) || isRefTo(serverObject, isNodeImpl)
+    }
+
+    function isNodes(serverObject: unknown): serverObject is ServerNode[] {
+      return Array.isArray(serverObject) && serverObject.every(isNode)
+    }
+
+    function isIndexInfo(serverObject: unknown): serverObject is ServerIndexInfo {
+      const isIndexInfoImpl = (o: unknown): o is ServerIndexInfo => (o as ServerIndexInfo).ideObjectType === "IndexInfo"
+      return isIndexInfoImpl(serverObject) || isRefTo(serverObject, isIndexInfoImpl)
+    }
+
+    function isIndexInfos(serverObject: unknown): serverObject is ServerIndexInfo[] {
+      return Array.isArray(serverObject) && serverObject.every(isIndexInfo)
+    }
+
+    function isOtherObject(serverObject: unknown): serverObject is ServerOtherObject {
+      const isOtherObjectImpl = (o: unknown): o is ServerOtherObject =>
+        serverObject != null
+          && (serverObject as ServerObjectDef).ideObjectId != null
+          && typeof serverObject === 'object'
+          && !("ideObjectType" in serverObject)
+
+      return isOtherObjectImpl(serverObject) || isRefTo(serverObject, isOtherObjectImpl)
+    }
+
+    function isStrings(serverObject: unknown): serverObject is string[] {
+      return Array.isArray(serverObject) && serverObject.every(s => typeof s === "string")
+    }
+
+    function isNumbers(serverObject: unknown): serverObject is number[] {
+      return Array.isArray(serverObject) && serverObject.every(n => typeof n === "number")
+    }
+
+
+    if (isType(rootServerObject))
+      return resolveOrConvert(rootServerObject, convertType)
+
+    if (isSymbol(rootServerObject))
+      return resolveOrConvert(rootServerObject, convertSymbol)
+
+    if (isNode(rootServerObject))   
+      return resolveOrConvert(rootServerObject, convertNode)
+
+
+    throw new Error(`Unexpected rootServerObject ${JSON.stringify(rootServerObject)}`)
   }
 
   async shutdown() {
@@ -369,6 +999,7 @@ class LspClient {
   }
 
   async #closeLog() {
+    await this.#log("---", `The subprocess exited with the code: ${this.#childProcess!.exitCode}`)
     await this.#log("---", `Finished test: ${this.#testName}`)
     await this.#logFileHandle!.close();
   }
@@ -378,434 +1009,4 @@ class LspClient {
       reject(reason)
     this.#pendingIdToResponseConsumer.clear()
   }
-}
-
-// *** Convert types ***
-
-type ServerObjectDef = {ideObjectId: number}
-type ServerObjectRef = {ideObjectIdRef: number}
-
-type ServerType = ServerObjectDef & {
-  ideObjectType: "TypeObject"
-  id: number
-  ideProjectId: number
-  ideTypeCheckerId: number
-}
-type ServerSymbol = ServerObjectDef & {
-  ideObjectType: "SymbolObject"
-  id: number
-}
-
-type ServerSignature = ServerObjectDef & {
-  ideObjectType: "SignatureObject"
-}
-
-type ServerIndexInfo = ServerObjectDef & {
-  ideObjectType: "IndexInfo"
-}
-
-type ServerNode = ServerObjectDef & {
-  ideObjectType: "NodeObject"
-}
-
-type ServerOtherObject = ServerObjectDef & {}
-
-type ServerObject = ServerObjectRef | ServerType | ServerSymbol | ServerIndexInfo | ServerNode | ServerOtherObject
-
-/**
- * These are properties which were formerly received via Checker, Type etc methods and properties.
- * Some of them were internal.
- * 
- * They can be moved now to the `handleCustomTsServerCommand` handler.
- */
-type TypeEx = Type & {
-  /**
-   * Type.id
-   */
-  id: number
-  /**
-   * Checker.getResolvedTypeArguments()
-   */
-  resolvedTypeArguments?: Type[]
-  /**
-   * Checker.getBaseConstraintsOfType()
-   */
-  constraint?: Type
-  /**
-   * This is enumQualifiedName received from Nodes structure
-   */
-  nameType?: string
-  /**
-   * Property of TypeParameter
-   */
-  isThisType?: boolean
-  /**
-   * Property of IntrinsicType
-   */
-  intrinsicName?: string
-
-  /**
-   * Async versions of Type.get...() methods
-   */
-  getPropertiesEx(): Promise<Symbol[]>
-  getCallSignaturesEx(): Promise<Signature[]>
-  getConstructSignaturesEx(): Promise<Signature[]>
-
-  /**
-   * Cached results of 'getTypeProperties'
-   */
-  callSignatures?: Signature[]
-  constructSignatures?: Signature[]
-  indexInfos?: IndexInfo[]
-  properties?: Symbol[]
-  resolvedFalseType?: Type
-  resolvedProperties?: Symbol[]
-  resolvedTrueType?: Type
-}
-
-type SymbolEx = Symbol & {
-  /**
-   * TransientSymbol.links.type
-   */
-  type: Type
-}
-
-type SignatureEx = Signature & {
-  /**
-   * Internal fields
-   */
-  flags: number
-  /**
-   * checker.getReturnTypeOfSignature()
-   */
-  resolvedReturnType: Type
-}
-
-type NodeEx = Node & {
-  /**
-   * ts.isComputedPropertyName()
-   */
-  computedProperty: boolean
-  /**
-   * instead of pos, end
-   */
-  range: {start: LineAndCharacter, end: LineAndCharacter}
-}
-
-type ClientObject = Type | Symbol | Signature | IndexInfo | Node | PseudoBigInt
-
-function convertToClientObject(rootServerObject: ServerObject, lspClient: LspClient, fileUri?: URL): ClientObject {
-  const references = new Map<number, ClientObject>()
-  function resolveOrConvert<From extends ServerObject, To extends ClientObject>(
-    serverObj: From,
-    converter: (serverObj: From, clientObj: To) => To,
-  ): To {
-    const {ideObjectIdRef} = serverObj as ServerObjectRef
-    if (ideObjectIdRef != null) {
-      const resolvedClientObj = references.get(ideObjectIdRef)
-      if (!resolvedClientObj)
-        throw new Error(`Could not resolve reference ${ideObjectIdRef} in ${JSON.stringify(serverObj)}`)
-      return resolvedClientObj as To
-    }
-
-    const {ideObjectId} = serverObj as ServerObjectDef
-    if (ideObjectId == null)
-      throw new Error(`Neither ideObjectId nor ideObjectIdRef in ${JSON.stringify(serverObj)}`)
-    if (references.has(ideObjectId))
-      throw new Error(`Duplicate ideObjectId ${ideObjectId} in ${JSON.stringify(serverObj)}`)
-
-    const clientObj = {} as To
-    references.set(ideObjectId, clientObj)
-    converter(serverObj, clientObj)
-    return clientObj
-  }
-
-  function convertType(serverType: ServerType, target: Type): Type {
-
-    // Properties returned by both "ideGetElementType" and "getPropertiesOfType"
-
-    if ("flags" in serverType)
-      target.flags = serverType.flags as number  
-    else
-      throw new Error(`Expected "flags" in ${JSON.stringify(serverType)}`)
-
-    if ("id" in serverType && typeof serverType.id === "number")
-      (target as TypeEx).id = serverType.id
-
-    if ("objectFlags" in serverType)
-      (target as ObjectType).objectFlags = serverType.objectFlags as number
-
-    // Returned by "ideGetElementType" (alphabetically)
-
-    if ("aliasSymbol" in serverType && isSymbol(serverType.aliasSymbol))
-      target.aliasSymbol = resolveOrConvert(serverType.aliasSymbol, convertSymbol)
-
-    if ("aliasTypeArguments" in serverType && isTypes(serverType.aliasTypeArguments))
-      target.aliasTypeArguments = serverType.aliasTypeArguments
-        .map(arg => resolveOrConvert(arg, convertType))
-
-    if ("baseType" in serverType && isType(serverType.baseType))
-      (target as SubstitutionType).baseType = resolveOrConvert(serverType.baseType, convertType)
-
-    if ("checkType" in serverType && isType(serverType.checkType))
-      (target as ConditionalType).checkType = resolveOrConvert(serverType.checkType, convertType)
-
-    if ("constraint" in serverType && isType(serverType.constraint))
-      (target as TypeEx).constraint = resolveOrConvert(serverType.constraint, convertType)
-
-    if ("elementFlags" in serverType && isNumbers(serverType.elementFlags))
-      (target as TupleType).elementFlags = serverType.elementFlags
-
-    if ("extendsType" in serverType && isType(serverType.extendsType))
-      (target as ConditionalType).extendsType = resolveOrConvert(serverType.extendsType, convertType)
-
-    if ("freshType" in serverType && isType(serverType.freshType))
-      (target as LiteralType).freshType = resolveOrConvert(serverType.freshType, convertType) as LiteralType
-
-    if ("indexType" in serverType && isType(serverType.indexType))
-      (target as IndexedAccessType).indexType = resolveOrConvert(serverType.indexType, convertType)
-
-    if ("intrinsicName" in serverType && typeof serverType.intrinsicName === "string")
-      (target as TypeEx).intrinsicName = serverType.intrinsicName
-
-    if ("isThisType" in serverType && typeof serverType.isThisType === "boolean")
-      (target as TypeEx).isThisType = serverType.isThisType
-
-    if ("nameType" in serverType && typeof serverType.nameType === "string")
-      (target as TypeEx).nameType = serverType.nameType
-
-    if ("objectType" in serverType && isType(serverType.objectType))
-      (target as IndexedAccessType).objectType = resolveOrConvert(serverType.objectType, convertType)
-
-    if ("resolvedTypeArguments" in serverType && isTypes(serverType.resolvedTypeArguments))
-      (target as TypeEx).resolvedTypeArguments = serverType.resolvedTypeArguments
-        .map(t => resolveOrConvert(t, convertType))
-
-    if ("symbol" in serverType && isSymbol(serverType.symbol))
-      target.symbol = resolveOrConvert(serverType.symbol, convertSymbol)
-
-    if ("target" in serverType && isType(serverType.target))
-      (target as TypeReference).target = resolveOrConvert(serverType.target, convertType) as GenericType
-
-    if ("texts" in serverType && isStrings(serverType.texts))
-      (target as TemplateLiteralType).texts = serverType.texts
-
-    if ("type" in serverType && isType(serverType.type))
-      (target as IndexType).type = resolveOrConvert(serverType.type, convertType)
-
-    if ("types" in serverType && isTypes(serverType.types))
-      (target as UnionType).types = serverType.types
-        .map(t => resolveOrConvert(t, convertType))
-
-    if ("value" in serverType) {
-      if (isOtherObject(serverType.value))
-        (target as BigIntLiteralType).value = resolveOrConvert(serverType.value, convertPseudoBigInt)
-      if (typeof serverType.value === "string" || typeof serverType.value === "number")
-        (target as LiteralType).value = serverType.value
-    }
-
-    // Returned by "getPropertiesOfType" (alphabetically)
-
-    if ("callSignatures" in serverType && isSignatures(serverType.callSignatures))
-      (target as TypeEx).callSignatures = serverType.callSignatures
-        .map(sig => resolveOrConvert(sig, convertSignature))
-
-    if ("constructSignatures" in serverType && isSignatures(serverType.constructSignatures))
-      (target as TypeEx).constructSignatures = serverType.constructSignatures
-        .map(sig => resolveOrConvert(sig, convertSignature))
-
-    if ("indexInfos" in serverType && isIndexInfos(serverType.indexInfos))
-      (target as TypeEx).indexInfos = serverType.indexInfos
-        .map(info => resolveOrConvert(info, convertIndexInfo))
-
-    if ("properties" in serverType && isSymbols(serverType.properties))
-      (target as TypeEx).properties = serverType.properties
-        .map(sym => resolveOrConvert(sym, convertSymbol))
-
-    if ("resolvedFalseType" in serverType && isType(serverType.resolvedFalseType))
-      (target as TypeEx).resolvedFalseType = resolveOrConvert(serverType.resolvedFalseType, convertType)
-
-    if ("resolvedProperties" in serverType && isSymbols(serverType.resolvedProperties))
-      (target as TypeEx).resolvedProperties = serverType.resolvedProperties
-        .map(sym => resolveOrConvert(sym, convertSymbol))
-
-    if ("resolvedTrueType" in serverType && isType(serverType.resolvedTrueType))
-      (target as TypeEx).resolvedTrueType = resolveOrConvert(serverType.resolvedTrueType, convertType)
-
-    // Methods
-
-    target.getFlags = () => target.flags
-    target.getSymbol = () => target.symbol
-
-    let typePropertiesResponse: Type | undefined
-    async function getTypeProperties() {
-      if (!typePropertiesResponse)
-        typePropertiesResponse = await lspClient.getTypeProperties(
-          serverType.id,
-          serverType.ideProjectId,
-          serverType.ideTypeCheckerId,
-          fileUri,
-        )
-      return typePropertiesResponse as TypeEx
-    }
-    (target as TypeEx).getPropertiesEx = async () => (await getTypeProperties()).properties!;
-    (target as TypeEx).getCallSignaturesEx = async () => (await getTypeProperties()).callSignatures!;
-    (target as TypeEx).getConstructSignaturesEx = async () => (await getTypeProperties()).constructSignatures!
-
-    return target
-  }
-
-  function convertSymbol(symbolServerObj: ServerSymbol, target: Symbol): Symbol {
-    if ("declarations" in symbolServerObj && isNodes(symbolServerObj.declarations))
-      target.declarations = symbolServerObj.declarations
-        .map(node => resolveOrConvert(node, convertNode) as Declaration)
-
-    if ("escapedName" in symbolServerObj && typeof symbolServerObj.escapedName === 'string') {
-      target.escapedName = symbolServerObj.escapedName as __String
-      (target as {name: string}).name = symbolServerObj.escapedName
-    }
-
-    if ("flags" in symbolServerObj && typeof symbolServerObj.flags === 'number')  
-      target.flags = symbolServerObj.flags    
-
-    if ("type" in symbolServerObj && isType(symbolServerObj.type))
-      (target as SymbolEx).type = resolveOrConvert(symbolServerObj.type, convertType)
-
-    if ("valueDeclaration" in symbolServerObj && isNode(symbolServerObj.valueDeclaration))
-      target.valueDeclaration = resolveOrConvert(symbolServerObj.valueDeclaration, convertNode) as Declaration
-
-    return target
-  }
-
-  function convertSignature(signatureServerObj: ServerSignature, target: Signature): Signature {
-    if ("declaration" in signatureServerObj && isNode(signatureServerObj.declaration))
-      target.declaration = resolveOrConvert(signatureServerObj.declaration, convertNode) as SignatureDeclaration
-
-    if ("flags" in signatureServerObj && typeof signatureServerObj.flags === "number")
-      (target as SignatureEx).flags = signatureServerObj.flags
-
-    if ("parameters" in signatureServerObj && isSymbols(signatureServerObj.parameters))
-      target.parameters = signatureServerObj.parameters
-        .map(sym => resolveOrConvert(sym, convertSymbol))
-
-    if ("resolvedReturnType" in signatureServerObj && isType(signatureServerObj.resolvedReturnType))
-      (target as SignatureEx).resolvedReturnType = resolveOrConvert(signatureServerObj.resolvedReturnType, convertType)
-
-    if ("typeParameters" in signatureServerObj && isTypes(signatureServerObj.typeParameters))
-      target.typeParameters = signatureServerObj.typeParameters
-        .map(type => resolveOrConvert(type, convertType))
-
-    return target
-  }
-
-  function convertNode(nodeServerObj: ServerNode, target: Node): Node {
-    if ("computedProperty" in nodeServerObj && typeof nodeServerObj.computedProperty === "boolean")
-      (target as NodeEx).computedProperty = nodeServerObj.computedProperty
-
-    if ("fileName" in nodeServerObj && typeof nodeServerObj.fileName === "string")
-      (target as SourceFile).fileName = nodeServerObj.fileName
-
-    if ("parent" in nodeServerObj && isNode(nodeServerObj.parent))
-      (target as {parent: Node}).parent = resolveOrConvert(nodeServerObj.parent, convertNode)
-
-    if ("range" in nodeServerObj && typeof nodeServerObj.range === "object")
-      (target as NodeEx).range = nodeServerObj.range as NodeEx["range"]
-
-    return target
-  }
-
-  function convertPseudoBigInt(pseudoBigIntServerObj: ServerOtherObject, target: PseudoBigInt): PseudoBigInt {
-    if ("negative" in pseudoBigIntServerObj && typeof pseudoBigIntServerObj.negative === "boolean")
-      target.negative = pseudoBigIntServerObj.negative
-
-    if ("base10Value" in pseudoBigIntServerObj && typeof pseudoBigIntServerObj.base10Value === "string")
-      target.base10Value = pseudoBigIntServerObj.base10Value
-
-    return target
-  }
-
-  function convertIndexInfo(indexInfoServerObj: ServerIndexInfo, target: IndexInfo): IndexInfo {
-    if ("declaration" in indexInfoServerObj && isNode(indexInfoServerObj.declaration))
-      target.declaration = resolveOrConvert(indexInfoServerObj.declaration, convertNode) as IndexSignatureDeclaration
-
-    if ("isReadonly" in indexInfoServerObj && typeof indexInfoServerObj.isReadonly === "boolean")
-      target.isReadonly = indexInfoServerObj.isReadonly
-
-    if ("keyType" in indexInfoServerObj && isType(indexInfoServerObj.keyType))
-      target.keyType = resolveOrConvert(indexInfoServerObj.keyType, convertType)
-
-    if ("type" in indexInfoServerObj && isType(indexInfoServerObj.type))
-      target.type = resolveOrConvert(indexInfoServerObj.type, convertType)
-
-    return target
-  }
-
-
-  function isType(serverObject: unknown): serverObject is ServerType {
-    return (serverObject as ServerType).ideObjectType === "TypeObject"
-  }
-
-  function isTypes(serverObject: unknown): serverObject is ServerType[] {
-    return Array.isArray(serverObject) && serverObject.every(isType)
-  }
-
-  function isSymbol(serverObject: unknown): serverObject is ServerSymbol {
-    return (serverObject as ServerSymbol).ideObjectType === "SymbolObject"
-  }
-
-  function isSymbols(serverObject: unknown): serverObject is ServerSymbol[] {
-    return Array.isArray(serverObject) && serverObject.every(isSymbol)
-  }
-
-  function isSignature(serverObject: unknown): serverObject is ServerSignature {
-    return (serverObject as ServerSignature).ideObjectType === "SignatureObject"
-  }
-
-  function isSignatures(serverObject: unknown): serverObject is ServerSignature[] {
-    return Array.isArray(serverObject) && serverObject.every(isSignature)
-  }
-
-  function isNode(serverObject: unknown): serverObject is ServerNode {
-    return (serverObject as ServerNode).ideObjectType === "NodeObject"
-  }
-
-  function isNodes(serverObject: unknown): serverObject is ServerNode[] {
-    return Array.isArray(serverObject) && serverObject.every(isNode)
-  }
-
-  function isIndexInfo(serverObject: unknown): serverObject is ServerIndexInfo {
-    return (serverObject as ServerIndexInfo).ideObjectType === "IndexInfo"
-  }
-
-  function isIndexInfos(serverObject: unknown): serverObject is ServerIndexInfo[] {
-    return Array.isArray(serverObject) && serverObject.every(isIndexInfo)
-  }
-
-  function isOtherObject(serverObject: unknown): serverObject is ServerOtherObject {
-    return serverObject != null
-      && (serverObject as ServerObjectDef).ideObjectId != null
-      && typeof serverObject === 'object'
-      && !("ideObjectType" in serverObject)
-  }
-
-  function isStrings(serverObject: unknown): serverObject is string[] {
-    return Array.isArray(serverObject) && serverObject.every(s => typeof s === "string")
-  }
-
-  function isNumbers(serverObject: unknown): serverObject is number[] {
-    return Array.isArray(serverObject) && serverObject.every(n => typeof n === "number")
-  }
-
-
-  if (isType(rootServerObject))
-    return resolveOrConvert(rootServerObject, convertType)
-
-  if (isSymbol(rootServerObject))
-    return resolveOrConvert(rootServerObject, convertSymbol)
-
-  if (isNode(rootServerObject))   
-    return resolveOrConvert(rootServerObject, convertNode)
-
-
-  throw new Error(`Unexpected rootServerObject ${JSON.stringify(rootServerObject)}`)
 }
