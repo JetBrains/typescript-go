@@ -23080,6 +23080,8 @@ func unmarshalParams(method Method, data []byte) (any, error) {
 		return unmarshalPtrTo[CancelParams](data)
 	case MethodProgress:
 		return unmarshalPtrTo[ProgressParams](data)
+	case MethodHandleCustomTsServerCommand:
+		return unmarshalPtrTo[HandleCustomTsServerCommandParams](data)
 	default:
 		return unmarshalAny(data)
 	}
