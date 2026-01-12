@@ -21,12 +21,13 @@ type JbHandleCustomTsServerCommandParams struct {
 type IdeCommand string
 
 const (
-	IdeCommandGetElementType      IdeCommand = "ideGetElementType"
-	IdeCommandGetSymbolType       IdeCommand = "ideGetSymbolType"
-	IdeCommandGetTypeProperties   IdeCommand = "ideGetTypeProperties"
-	IdeCommandGetTypeProperty     IdeCommand = "ideGetTypeProperty"
-	IdeAreTypesMutuallyAssignable IdeCommand = "ideAreTypesMutuallyAssignable"
-	IdeGetResolvedSignature       IdeCommand = "ideGetResolvedSignature"
+	IdeCommandGetElementType       IdeCommand = "ideGetElementType"
+	IdeCommandGetSymbolType        IdeCommand = "ideGetSymbolType"
+	IdeCommandGetTypeProperties    IdeCommand = "ideGetTypeProperties"
+	IdeCommandGetTypeProperty      IdeCommand = "ideGetTypeProperty"
+	IdeAreTypesMutuallyAssignable  IdeCommand = "ideAreTypesMutuallyAssignable"
+	IdeGetResolvedSignature        IdeCommand = "ideGetResolvedSignature"
+	IdeCommandGetCompletionSymbols IdeCommand = "ideGetCompletionSymbols"
 )
 
 type TypeRequestKind string
@@ -74,6 +75,12 @@ type AreTypesMutuallyAssignableArguments struct {
 type GetResolvedSignatureArguments struct {
 	File            DocumentUri  `json:"file"`
 	Range           Range        `json:"range"`
+	ProjectFileName *DocumentUri `json:"projectFileName"`
+}
+
+type GetCompletionSymbolsArguments struct {
+	File            DocumentUri  `json:"file"`
+	Position        Position     `json:"position"`
 	ProjectFileName *DocumentUri `json:"projectFileName"`
 }
 
@@ -134,6 +141,13 @@ func (p *JbHandleCustomTsServerCommandParams) UnmarshalJSON(data []byte) error {
 		var typedArgs GetResolvedSignatureArguments
 		if err := json.Unmarshal(temp.Arguments, &typedArgs); err != nil {
 			return fmt.Errorf("failed to unmarshal GetResolvedSignatureArguments: %w", err)
+		}
+		args = &typedArgs
+
+	case IdeCommandGetCompletionSymbols:
+		var typedArgs GetCompletionSymbolsArguments
+		if err := json.Unmarshal(temp.Arguments, &typedArgs); err != nil {
+			return fmt.Errorf("failed to unmarshal GetCompletionSymbolsArguments: %w", err)
 		}
 		args = &typedArgs
 

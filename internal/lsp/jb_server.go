@@ -79,6 +79,20 @@ func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto
 			result, err := GetResolvedSignature(ctx, project, file, args.Range)
 			s.jbSendResult(req.ID, result, err)
 		}
+	case lsproto.IdeCommandGetCompletionSymbols:
+		{
+			args := params.Arguments.(*lsproto.GetCompletionSymbolsArguments)
+			proj, file, err := s.GetProjectAndFileName(args.ProjectFileName, args.File, ctx)
+			if err != nil {
+				s.jbSendResult(req.ID, nil, err)
+				return nil
+			}
+
+			snapshot, release := s.session.Snapshot()
+			defer release()
+			result, err := IdeGetCompletionSymbols(ctx, proj, snapshot, file, args.Position)
+			s.jbSendResult(req.ID, result, err)
+		}
 	}
 	snapshot, release := s.session.Snapshot()
 	defer release()

@@ -316,6 +316,51 @@ func IdeGetTypeProperty(
 	return result, nil
 }
 
+func IdeGetCompletionSymbols(
+	ctx context.Context,
+	proj *project.Project,
+	snapshot *project.Snapshot,
+	fileName string,
+	position lsproto.Position,
+) (*collections.OrderedMap[string, interface{}], error) {
+	projectIdNum := getProjectId(proj)
+	projectVersion := proj.ProgramLastUpdate
+	program := proj.GetProgram()
+	sourceFile := program.GetSourceFile(fileName)
+	if sourceFile == nil {
+		return nil, nil
+	}
+
+	positionOffset := scanner.GetECMAPositionOfLineAndCharacter(sourceFile, int(position.Line), int(position.Character))
+
+	languageService := ls.NewLanguageService(program, snapshot)
+
+	checker, done := languageService.GetProgram().GetTypeCheckerForFile(ctx, sourceFile)
+	defer done()
+	preferences := languageService.UserPreferences()
+	symbols := languageService.GetCompletionDataSymbols(ctx, checker, sourceFile, positionOffset, preferences)
+
+	if symbols == nil || len(symbols) == 0 {
+		return nil, nil
+	}
+
+	typeChecker, done := program.GetTypeCheckerForFile(ctx, sourceFile)
+	defer done()
+
+	convertContext := NewConvertContext(typeChecker, projectIdNum, projectVersion)
+
+	convertedSymbols := make([]interface{}, 0, len(symbols))
+	for _, symbol := range symbols {
+		convertedSymbols = append(convertedSymbols, ConvertSymbol(symbol, convertContext))
+	}
+
+	result := collections.NewOrderedMapWithSizeHint[string, interface{}](3)
+	result.Set("symbols", convertedSymbols)
+	result.Set("ideProjectId", projectIdNum)
+	result.Set("ideTypeCheckerId", projectVersion)
+	return result, nil
+}
+
 func AreTypesMutuallyAssignable(
 	ctx context.Context,
 	projectId int,
