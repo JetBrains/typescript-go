@@ -316,6 +316,48 @@ func IdeGetTypeProperty(
 	return result, nil
 }
 
+func IdeGetTypeText(
+	ctx context.Context,
+	projectId int,
+	projectVersion uint64,
+	symbolId int,
+	flags *int,
+) (*collections.OrderedMap[string, interface{}], error) {
+	convertContext, done, err := getConvertContext(ctx, projectId, projectVersion)
+	defer done()
+	if err != nil {
+		return nil, err
+	}
+
+	symbol, exists := convertContext.seenSymbolIds[ast.SymbolId(symbolId)]
+	if !exists {
+		return nil, nil
+	}
+
+	if symbol.Declarations == nil || len(symbol.Declarations) != 1 {
+		return nil, nil
+	}
+
+	t := convertContext.checker.GetTypeOfSymbol(symbol)
+	if t == nil {
+		return nil, nil
+	}
+
+	var formatFlags checker.TypeFormatFlags
+	if flags != nil {
+		formatFlags = checker.TypeFormatFlags(*flags)
+	} else {
+		formatFlags = checker.TypeFormatFlagsAllowUniqueESSymbolType | checker.TypeFormatFlagsUseAliasDefinedOutsideCurrentScope
+	}
+
+	enclosingDeclaration := symbol.Declarations[0]
+	typeText := convertContext.checker.TypeToStringEx(t, enclosingDeclaration, formatFlags)
+
+	result := collections.NewOrderedMapWithSizeHint[string, interface{}](1)
+	result.Set("typeText", typeText)
+	return result, nil
+}
+
 func IdeGetCompletionSymbols(
 	ctx context.Context,
 	proj *project.Project,

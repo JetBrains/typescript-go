@@ -60,6 +60,12 @@ func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto
 			symbol, err := IdeGetTypeProperty(ctx, args.IdeProjectId, uint64(args.IdeTypeCheckerId), args.TypeId, args.PropertyName)
 			s.jbSendResult(req.ID, symbol, err)
 		}
+	case lsproto.IdeCommandGetTypeText:
+		{
+			args := params.Arguments.(*lsproto.GetTypeTextArguments)
+			typeText, err := IdeGetTypeText(ctx, args.IdeProjectId, uint64(args.IdeTypeCheckerId), args.SymbolId, args.Flags)
+			s.jbSendResult(req.ID, typeText, err)
+		}
 
 	case lsproto.IdeAreTypesMutuallyAssignable:
 		{

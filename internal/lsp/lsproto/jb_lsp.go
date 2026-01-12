@@ -25,6 +25,7 @@ const (
 	IdeCommandGetSymbolType        IdeCommand = "ideGetSymbolType"
 	IdeCommandGetTypeProperties    IdeCommand = "ideGetTypeProperties"
 	IdeCommandGetTypeProperty      IdeCommand = "ideGetTypeProperty"
+	IdeCommandGetTypeText          IdeCommand = "ideGetTypeText"
 	IdeAreTypesMutuallyAssignable  IdeCommand = "ideAreTypesMutuallyAssignable"
 	IdeGetResolvedSignature        IdeCommand = "ideGetResolvedSignature"
 	IdeCommandGetCompletionSymbols IdeCommand = "ideGetCompletionSymbols"
@@ -63,6 +64,13 @@ type GetTypePropertyArguments struct {
 	IdeProjectId     int    `json:"ideProjectId"`
 	TypeId           int    `json:"typeId"`
 	PropertyName     string `json:"propertyName"`
+}
+
+type GetTypeTextArguments struct {
+	IdeTypeCheckerId int  `json:"ideTypeCheckerId"`
+	IdeProjectId     int  `json:"ideProjectId"`
+	SymbolId         int  `json:"symbolId"`
+	Flags            *int `json:"flags,omitempty"`
 }
 
 type AreTypesMutuallyAssignableArguments struct {
@@ -127,6 +135,13 @@ func (p *JbHandleCustomTsServerCommandParams) UnmarshalJSON(data []byte) error {
 		var typedArgs GetTypePropertyArguments
 		if err := json.Unmarshal(temp.Arguments, &typedArgs); err != nil {
 			return fmt.Errorf("failed to unmarshal GetTypePropertyArguments: %w", err)
+		}
+		args = &typedArgs
+
+	case IdeCommandGetTypeText:
+		var typedArgs GetTypeTextArguments
+		if err := json.Unmarshal(temp.Arguments, &typedArgs); err != nil {
+			return fmt.Errorf("failed to unmarshal GetTypeTextArguments: %w", err)
 		}
 		args = &typedArgs
 
