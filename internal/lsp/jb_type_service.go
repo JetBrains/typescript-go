@@ -334,10 +334,6 @@ func IdeGetTypeText(
 		return nil, nil
 	}
 
-	if symbol.Declarations == nil || len(symbol.Declarations) != 1 {
-		return nil, nil
-	}
-
 	t := convertContext.checker.GetTypeOfSymbol(symbol)
 	if t == nil {
 		return nil, nil
@@ -350,7 +346,10 @@ func IdeGetTypeText(
 		formatFlags = checker.TypeFormatFlagsAllowUniqueESSymbolType | checker.TypeFormatFlagsUseAliasDefinedOutsideCurrentScope
 	}
 
-	enclosingDeclaration := symbol.Declarations[0]
+	var enclosingDeclaration *ast.Node
+	if symbol.Declarations != nil && len(symbol.Declarations) == 1 {
+		enclosingDeclaration = symbol.Declarations[0]
+	}
 	typeText := convertContext.checker.TypeToStringEx(t, enclosingDeclaration, formatFlags)
 
 	result := collections.NewOrderedMapWithSizeHint[string, interface{}](1)
