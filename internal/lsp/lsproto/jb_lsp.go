@@ -69,7 +69,8 @@ type GetTypePropertyArguments struct {
 type GetTypeTextArguments struct {
 	IdeTypeCheckerId int  `json:"ideTypeCheckerId"`
 	IdeProjectId     int  `json:"ideProjectId"`
-	SymbolId         int  `json:"symbolId"`
+	TypeId           *int `json:"typeId,omitempty"`
+	SymbolId         *int `json:"symbolId,omitempty"`
 	Flags            *int `json:"flags,omitempty"`
 }
 

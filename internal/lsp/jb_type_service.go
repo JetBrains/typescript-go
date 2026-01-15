@@ -320,7 +320,8 @@ func IdeGetTypeText(
 	ctx context.Context,
 	projectId int,
 	projectVersion uint64,
-	symbolId int,
+	typeId *int,
+	symbolId *int,
 	flags *int,
 ) (*collections.OrderedMap[string, interface{}], error) {
 	convertContext, done, err := getConvertContext(ctx, projectId, projectVersion)
@@ -329,12 +330,25 @@ func IdeGetTypeText(
 		return nil, err
 	}
 
-	symbol, exists := convertContext.seenSymbolIds[ast.SymbolId(symbolId)]
-	if !exists {
-		return nil, nil
+	var t *checker.Type
+	var symbol *ast.Symbol
+
+	if typeId != nil {
+		var exists bool
+		t, exists = convertContext.seenTypeIds[checker.TypeId(*typeId)]
+		if !exists {
+			return nil, nil
+		}
+		symbol = t.Symbol()
+	} else if symbolId != nil {
+		var exists bool
+		symbol, exists = convertContext.seenSymbolIds[ast.SymbolId(*symbolId)]
+		if !exists {
+			return nil, nil
+		}
+		t = convertContext.checker.GetTypeOfSymbol(symbol)
 	}
 
-	t := convertContext.checker.GetTypeOfSymbol(symbol)
 	if t == nil {
 		return nil, nil
 	}
@@ -347,7 +361,7 @@ func IdeGetTypeText(
 	}
 
 	var enclosingDeclaration *ast.Node
-	if symbol.Declarations != nil && len(symbol.Declarations) == 1 {
+	if symbol != nil && symbol.Declarations != nil && len(symbol.Declarations) == 1 {
 		enclosingDeclaration = symbol.Declarations[0]
 	}
 	typeText := convertContext.checker.TypeToStringEx(t, enclosingDeclaration, formatFlags)

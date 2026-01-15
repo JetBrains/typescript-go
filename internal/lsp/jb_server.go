@@ -63,7 +63,7 @@ func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto
 	case lsproto.IdeCommandGetTypeText:
 		{
 			args := params.Arguments.(*lsproto.GetTypeTextArguments)
-			typeText, err := IdeGetTypeText(ctx, args.IdeProjectId, uint64(args.IdeTypeCheckerId), args.SymbolId, args.Flags)
+			typeText, err := IdeGetTypeText(ctx, args.IdeProjectId, uint64(args.IdeTypeCheckerId), args.TypeId, args.SymbolId, args.Flags)
 			s.jbSendResult(req.ID, typeText, err)
 		}
 
