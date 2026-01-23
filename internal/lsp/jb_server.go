@@ -24,7 +24,7 @@ func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto
 	defer func() {
 		if r := recover(); r != nil {
 			stack := debug.Stack()
-			s.Log("panic running jbHandleCustomTsServerCommand:", r, string(stack))
+			s.logger.Error("panic running jbHandleCustomTsServerCommand:", r, string(stack))
 			s.sendResult(req.ID, &map[string]string{})
 		}
 	}()

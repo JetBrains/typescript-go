@@ -15,7 +15,7 @@ func (ls *LanguageService) GetCompletionDataSymbols(
 	position int,
 	preferences *lsutil.UserPreferences,
 ) []*ast.Symbol {
-	data := ls.getCompletionData(ctx, typeChecker, file, position, preferences)
+	data, _ := ls.getCompletionData(ctx, typeChecker, file, position, preferences)
 	switch d := data.(type) {
 	case *completionDataData:
 		return d.symbols

@@ -388,7 +388,7 @@ func IdeGetCompletionSymbols(
 
 	positionOffset := scanner.GetECMAPositionOfLineAndCharacter(sourceFile, int(position.Line), int(position.Character))
 
-	languageService := ls.NewLanguageService(program, snapshot)
+	languageService := ls.NewLanguageService(proj.ConfigFilePath(), program, snapshot)
 
 	checker, done := languageService.GetProgram().GetTypeCheckerForFile(ctx, sourceFile)
 	defer done()
