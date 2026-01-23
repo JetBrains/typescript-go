@@ -8,8 +8,8 @@ import (
 )
 
 func TestCalledUnionsOfDissimilarTyeshaveGoodDisplay(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `declare const callableThing1:
     | ((o1: {x: number}) => void)
@@ -53,7 +53,8 @@ declare const callableThing5:
 
 callableThing5(/*5*/1)
 `
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "1")
 	f.VerifySignatureHelp(t, fourslash.VerifySignatureHelpOptions{Text: "callableThing1(o1: { x: number; } & { y: number; }): void"})
 	f.GoToMarker(t, "2")

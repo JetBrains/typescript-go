@@ -8,8 +8,8 @@ import (
 )
 
 func TestSignatureHelpImportStarFromExportEquals(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @allowJs: true
 // @Filename: /node_modules/@types/abs/index.d.ts
@@ -18,7 +18,8 @@ export = abs;
 // @Filename: /a.js
 import * as abs from "abs";
 abs/**/;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "")
 	f.Insert(t, "(")
 	f.VerifySignatureHelp(t, fourslash.VerifySignatureHelpOptions{Text: "abs(str: string): string"})

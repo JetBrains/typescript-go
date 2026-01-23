@@ -8,8 +8,8 @@ import (
 )
 
 func TestGenericFunctionReturnType(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `function foo<T, U>(x: T, y: U): (a: U) => T {
     var z = y;
@@ -17,7 +17,8 @@ func TestGenericFunctionReturnType(t *testing.T) {
 }
 var /*2*/r = foo(/*1*/1, "");
 var /*4*/r2 = r(/*3*/"");`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "1")
 	f.VerifySignatureHelp(t, fourslash.VerifySignatureHelpOptions{Text: "foo(x: number, y: string): (a: string) => number"})
 	f.VerifyQuickInfoAt(t, "2", "var r: (a: string) => number", "")

@@ -399,14 +399,13 @@ const customLinterPath = "./_tools/custom-gcl";
 const customLinterHashPath = customLinterPath + ".hash";
 
 const golangciLintPackage = memoize(() => {
-    // const golangciLintYml = fs.readFileSync(".custom-gcl.yml", "utf8");
-    // const pattern = /^version:\s*(v\d+\.\d+\.\d+).*$/m;
-    // const match = pattern.exec(golangciLintYml);
-    // if (!match) {
-    //     throw new Error("Expected version in .custom-gcl.yml");
-    // }
-    // const version = match[1];
-    const version = "v2.6.3-0.20251130135459-0212d7c8deac"; // https://github.com/golangci/golangci-lint/issues/6205
+    const golangciLintYml = fs.readFileSync(".custom-gcl.yml", "utf8");
+    const pattern = /^version:\s*(v\d+\.\d+\.\d+).*$/m;
+    const match = pattern.exec(golangciLintYml);
+    if (!match) {
+        throw new Error("Expected version in .custom-gcl.yml");
+    }
+    const version = match[1];
     const major = version.split(".")[0];
     const versionSuffix = ["v0", "v1"].includes(major) ? "" : "/" + major;
 
@@ -1308,7 +1307,8 @@ export const packNativePreviewExtensions = task({
         await rimraf(builtVsix);
         await fs.promises.mkdir(builtVsix, { recursive: true });
 
-        await $({ cwd: extensionDir })`npm run bundle`;
+        // We don't use vscode:prepublish, as that would run the build for each package below.
+        await $({ cwd: extensionDir })`npm run bundle:release`;
 
         let version = "0.0.0";
         if (options.forRelease) {
@@ -1342,7 +1342,6 @@ export const packNativePreviewExtensions = task({
             const packageJsonPath = path.join(thisExtensionDir, "package.json");
             const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
             packageJson.version = version;
-            packageJson.main = "dist/extension.bundle.js";
             fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, undefined, 4));
 
             await fs.promises.copyFile("NOTICE.txt", path.join(thisExtensionDir, "NOTICE.txt"));

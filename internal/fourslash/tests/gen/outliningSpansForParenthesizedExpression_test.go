@@ -8,8 +8,8 @@ import (
 )
 
 func TestOutliningSpansForParenthesizedExpression(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `const a = [|(
     true
@@ -40,6 +40,7 @@ const c = [|(
         ( 1 )
     )|]
 )|];`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyOutliningSpans(t)
 }

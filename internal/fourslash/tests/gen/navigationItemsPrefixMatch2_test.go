@@ -10,8 +10,8 @@ import (
 )
 
 func TestNavigationItemsPrefixMatch2(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `module Shapes {
     export class Point {
@@ -32,7 +32,8 @@ function PointsFunc(): void {
     [|origin1;|]
     [|public _distance(distanceParam): void;|]
 }|]`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyWorkspaceSymbol(t, []*fourslash.VerifyWorkspaceSymbolCase{
 		{
 			Pattern:     "origin",

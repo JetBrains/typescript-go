@@ -11,8 +11,8 @@ import (
 )
 
 func TestAutoImportPathsAliasesAndBarrels(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /tsconfig.json
  {
@@ -38,7 +38,8 @@ func TestAutoImportPathsAliasesAndBarrels(t *testing.T) {
  export class Thing1B {}
 // @Filename: /src/dirB/thing2B.ts
  export class Thing2B {}`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyCompletions(t, "", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,
 		ItemDefaults: &fourslash.CompletionsExpectedItemDefaults{
@@ -50,7 +51,7 @@ func TestAutoImportPathsAliasesAndBarrels(t *testing.T) {
 				&lsproto.CompletionItem{
 					Label: "Thing2A",
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "./thing2A",
 						},
 					},
@@ -60,7 +61,7 @@ func TestAutoImportPathsAliasesAndBarrels(t *testing.T) {
 				&lsproto.CompletionItem{
 					Label: "Thing1B",
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "~/dirB",
 						},
 					},
@@ -70,7 +71,7 @@ func TestAutoImportPathsAliasesAndBarrels(t *testing.T) {
 				&lsproto.CompletionItem{
 					Label: "Thing2B",
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "~/dirB",
 						},
 					},

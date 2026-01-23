@@ -8,8 +8,8 @@ import (
 )
 
 func TestGoToImplementationShorthandPropertyAssignment_01(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `interface Foo {
     someFunction(): void;
@@ -52,6 +52,7 @@ var y = class Foo {
 };
 
 createBarUsingClassDeclaration().Fo/*reference*/o;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineGoToImplementation(t, "reference")
 }

@@ -8,12 +8,13 @@ import (
 )
 
 func TestSignatureHelpObjectLiteral(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `var objectLiteral = { n: 5, s: "", f: (a: number, b: string) => "" };
 objectLiteral.f(/*objectLiteral1*/4, /*objectLiteral2*/"");`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "objectLiteral1")
 	f.VerifySignatureHelp(t, fourslash.VerifySignatureHelpOptions{Text: "f(a: number, b: string): string", ParameterCount: 2, ParameterName: "a", ParameterSpan: "a: number"})
 	f.GoToMarker(t, "objectLiteral2")

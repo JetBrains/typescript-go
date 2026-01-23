@@ -11,8 +11,8 @@ import (
 )
 
 func TestAutoImportProvider_namespaceSameNameAsIntrinsic(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /home/src/workspaces/project/node_modules/fp-ts/package.json
 { "name": "fp-ts", "version": "0.10.4" }
@@ -27,7 +27,8 @@ export type SafeString = string;
 { "compilerOptions": { "module": "commonjs" } }
 // @Filename: /home/src/workspaces/project/index.ts
 type A = { name: string/**/ }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.MarkTestAsStradaServer()
 	f.GoToMarker(t, "")
 	f.VerifyCompletions(t, "", &fourslash.CompletionsExpectedList{
@@ -46,7 +47,7 @@ type A = { name: string/**/ }`
 					Label:    "string",
 					SortText: PtrTo(string(ls.SortTextAutoImportSuggestions)),
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "fp-ts",
 						},
 					},

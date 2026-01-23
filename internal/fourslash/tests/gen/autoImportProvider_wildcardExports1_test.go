@@ -11,8 +11,8 @@ import (
 )
 
 func TestAutoImportProvider_wildcardExports1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /home/src/workspaces/project/node_modules/pkg/package.json
 {
@@ -54,7 +54,8 @@ export const d1: number;
 }
 // @Filename: /home/src/workspaces/project/main.ts
 /**/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.MarkTestAsStradaServer()
 	f.VerifyCompletions(t, "", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,
@@ -67,7 +68,7 @@ export const d1: number;
 				&lsproto.CompletionItem{
 					Label: "a1",
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "pkg/a1",
 						},
 					},
@@ -77,7 +78,7 @@ export const d1: number;
 				&lsproto.CompletionItem{
 					Label: "b1",
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "pkg/b/b1.js",
 						},
 					},
@@ -87,7 +88,7 @@ export const d1: number;
 				&lsproto.CompletionItem{
 					Label: "c1",
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "pkg/c/c1.js",
 						},
 					},
@@ -97,7 +98,7 @@ export const d1: number;
 				&lsproto.CompletionItem{
 					Label: "c2",
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "pkg/c/subfolder/c2.mjs",
 						},
 					},
@@ -107,7 +108,7 @@ export const d1: number;
 				&lsproto.CompletionItem{
 					Label: "d1",
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "pkg/d/d1",
 						},
 					},

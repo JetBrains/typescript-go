@@ -11,8 +11,8 @@ import (
 )
 
 func TestCompletionsUniqueSymbol_import(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @noLib: true
 // @Filename: /globals.d.ts
@@ -30,7 +30,8 @@ export const i: I;
 // @Filename: /user.ts
 import { i } from "./a";
 i[|./**/|];`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyCompletions(t, "", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,
 		ItemDefaults: &fourslash.CompletionsExpectedItemDefaults{
@@ -44,7 +45,7 @@ i[|./**/|];`
 					Label:      "publicSym",
 					InsertText: PtrTo("[publicSym]"),
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "./a",
 						},
 					},

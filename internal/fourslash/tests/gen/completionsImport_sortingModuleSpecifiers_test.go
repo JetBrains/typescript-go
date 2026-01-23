@@ -11,8 +11,8 @@ import (
 )
 
 func TestCompletionsImport_sortingModuleSpecifiers(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: tsconfig.json
 { "compilerOptions": { "module": "commonjs" } }
@@ -28,7 +28,8 @@ declare module "path" {
 }
 // @Filename: main.ts
 normalize/**/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.MarkTestAsStradaServer()
 	f.VerifyCompletions(t, "", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,
@@ -42,7 +43,7 @@ normalize/**/`
 					&lsproto.CompletionItem{
 						Label: "normalize",
 						Data: &lsproto.CompletionItemData{
-							AutoImport: &lsproto.AutoImportData{
+							AutoImport: &lsproto.AutoImportFix{
 								ModuleSpecifier: "path",
 							},
 						},
@@ -52,7 +53,7 @@ normalize/**/`
 					&lsproto.CompletionItem{
 						Label: "normalize",
 						Data: &lsproto.CompletionItemData{
-							AutoImport: &lsproto.AutoImportData{
+							AutoImport: &lsproto.AutoImportFix{
 								ModuleSpecifier: "path/posix",
 							},
 						},
@@ -62,7 +63,7 @@ normalize/**/`
 					&lsproto.CompletionItem{
 						Label: "normalize",
 						Data: &lsproto.CompletionItemData{
-							AutoImport: &lsproto.AutoImportData{
+							AutoImport: &lsproto.AutoImportFix{
 								ModuleSpecifier: "path/win32",
 							},
 						},

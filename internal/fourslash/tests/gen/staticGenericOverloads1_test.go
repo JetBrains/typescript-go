@@ -8,8 +8,8 @@ import (
 )
 
 func TestStaticGenericOverloads1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `class A<T> {
     static B<S>(v: A<S>): A<S>;
@@ -20,7 +20,8 @@ func TestStaticGenericOverloads1(t *testing.T) {
 }
 var a = new A<number>();
 A.B(/**/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "")
 	f.VerifySignatureHelp(t, fourslash.VerifySignatureHelpOptions{OverloadsCount: 2})
 	f.Insert(t, "a")

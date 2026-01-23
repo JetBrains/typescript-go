@@ -9,14 +9,15 @@ import (
 )
 
 func TestAugmentedTypesModule2(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `function /*11*/m2f(x: number) { };
 namespace m2f { export interface I { foo(): void } }
 var x: m2f./*1*/
 var /*2*/r = m2f/*3*/;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyQuickInfoAt(t, "11", "function m2f(x: number): void\nnamespace m2f", "")
 	f.VerifyCompletions(t, "1", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,

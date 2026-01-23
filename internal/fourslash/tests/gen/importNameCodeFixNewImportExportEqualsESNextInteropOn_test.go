@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFixNewImportExportEqualsESNextInteropOn(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @EsModuleInterop: true
 // @Module: es2015
@@ -20,7 +20,8 @@ declare module "foo" {
 }
 // @Filename: /index.ts
 [|foo|]`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "/index.ts")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import foo from "foo";

@@ -8,8 +8,8 @@ import (
 )
 
 func TestGoToImplementationInterfaceMethod_01(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `interface Foo {
     hel/*declaration*/lo(): void;
@@ -26,6 +26,7 @@ function whatever(a: Foo) {
 }
 
 whatever(new Bar());`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineGoToImplementation(t, "function_call", "declaration")
 }

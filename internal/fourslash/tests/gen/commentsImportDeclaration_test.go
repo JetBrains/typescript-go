@@ -10,8 +10,8 @@ import (
 )
 
 func TestCommentsImportDeclaration(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: commentsImportDeclaration_file0.ts
 /** NamespaceComment*/
@@ -35,7 +35,8 @@ export namespace m/*2*/1 {
 import /*3*/extMod = require("./commentsImportDeclaration_file0/*4*/");
 extMod./*6*/m1./*7*/fooEx/*8q*/port(/*8*/);
 var new/*9*/Var = new extMod.m1.m2./*10*/c();`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyQuickInfoAt(t, "2", "namespace m1", "NamespaceComment")
 	f.VerifyQuickInfoAt(t, "3", "import extMod = require(\"./commentsImportDeclaration_file0\")", "Import declaration")
 	f.VerifyCompletions(t, "6", &fourslash.CompletionsExpectedList{

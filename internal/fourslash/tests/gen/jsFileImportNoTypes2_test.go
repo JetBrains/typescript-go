@@ -10,8 +10,8 @@ import (
 )
 
 func TestJsFileImportNoTypes2(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @allowJs: true
 // @Filename: /default.ts
@@ -32,7 +32,8 @@ export class TestClassBaseline {}
 export interface TestInterfaceBaseline {}
 // @Filename: /a.js
 import /**/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyCompletions(t, "", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,
 		ItemDefaults: &fourslash.CompletionsExpectedItemDefaults{
@@ -45,7 +46,7 @@ import /**/`
 					Label:      "TestClassBaseline",
 					InsertText: PtrTo("import { TestClassBaseline } from \"./baseline\";"),
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "./baseline",
 						},
 					},
@@ -54,7 +55,7 @@ import /**/`
 					Label:      "TestClassExportList",
 					InsertText: PtrTo("import { TestClassExportList } from \"./exportList\";"),
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "./exportList",
 						},
 					},
@@ -63,7 +64,7 @@ import /**/`
 					Label:      "TestClassReExport",
 					InsertText: PtrTo("import { TestClassReExport } from \"./reExport\";"),
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "./reExport",
 						},
 					},
@@ -72,7 +73,7 @@ import /**/`
 					Label:      "TestDefaultClass",
 					InsertText: PtrTo("import TestDefaultClass from \"./default\";"),
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "./default",
 						},
 					},

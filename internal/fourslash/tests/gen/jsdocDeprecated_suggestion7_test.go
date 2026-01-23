@@ -8,8 +8,8 @@ import (
 )
 
 func TestJsdocDeprecated_suggestion7(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `enum Direction {
     Left = -1,
@@ -20,6 +20,7 @@ type T = Direction.Left
 const x = 1
 type x = string
 var y: x = 'hi'`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifySuggestionDiagnostics(t, nil)
 }

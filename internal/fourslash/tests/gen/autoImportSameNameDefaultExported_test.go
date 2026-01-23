@@ -11,8 +11,8 @@ import (
 )
 
 func TestAutoImportSameNameDefaultExported(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @module: commonjs
 // @Filename: /node_modules/antd/index.d.ts
@@ -23,7 +23,8 @@ declare function Table(): void;
 export default Table;
 // @Filename: /index.ts
 Table/**/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyCompletions(t, "", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,
 		ItemDefaults: &fourslash.CompletionsExpectedItemDefaults{
@@ -36,7 +37,7 @@ Table/**/`
 					&lsproto.CompletionItem{
 						Label: "Table",
 						Data: &lsproto.CompletionItemData{
-							AutoImport: &lsproto.AutoImportData{
+							AutoImport: &lsproto.AutoImportFix{
 								ModuleSpecifier: "antd",
 							},
 						},
@@ -46,7 +47,7 @@ Table/**/`
 					&lsproto.CompletionItem{
 						Label: "Table",
 						Data: &lsproto.CompletionItemData{
-							AutoImport: &lsproto.AutoImportData{
+							AutoImport: &lsproto.AutoImportFix{
 								ModuleSpecifier: "rc-table",
 							},
 						},

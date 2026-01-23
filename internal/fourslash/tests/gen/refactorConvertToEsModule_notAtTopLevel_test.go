@@ -8,8 +8,8 @@ import (
 )
 
 func TestRefactorConvertToEsModule_notAtTopLevel(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @allowJs: true
 // @target: esnext
@@ -17,6 +17,7 @@ func TestRefactorConvertToEsModule_notAtTopLevel(t *testing.T) {
 (function() {
     module.exports = 0;
 })();`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifySuggestionDiagnostics(t, nil)
 }

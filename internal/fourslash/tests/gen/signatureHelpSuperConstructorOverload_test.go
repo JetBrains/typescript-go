@@ -8,8 +8,8 @@ import (
 )
 
 func TestSignatureHelpSuperConstructorOverload(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `class SuperOverloadBase {
     constructor();
@@ -27,7 +27,8 @@ class SuperOverLoad2 extends SuperOverloadBase {
         super(""/*superOverload2*/);
     }
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "superOverload1")
 	f.VerifySignatureHelp(t, fourslash.VerifySignatureHelpOptions{Text: "SuperOverloadBase(): SuperOverloadBase", ParameterCount: 0, OverloadsCount: 2})
 	f.GoToMarker(t, "superOverload2")

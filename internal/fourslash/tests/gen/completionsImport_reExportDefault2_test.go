@@ -11,8 +11,8 @@ import (
 )
 
 func TestCompletionsImport_reExportDefault2(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @module: preserve
 // @checkJs: true
@@ -29,7 +29,8 @@ export { default, namedExport } from "./nested/module";
 // @Filename: /index.mjs
 import { namedExport } from "example";
 defaultExp/**/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyCompletions(t, "", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,
 		ItemDefaults: &fourslash.CompletionsExpectedItemDefaults{
@@ -43,7 +44,7 @@ defaultExp/**/`
 					&lsproto.CompletionItem{
 						Label: "defaultExport",
 						Data: &lsproto.CompletionItemData{
-							AutoImport: &lsproto.AutoImportData{
+							AutoImport: &lsproto.AutoImportFix{
 								ModuleSpecifier: "example",
 							},
 						},

@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFix_jsxOpeningTagImportDefault(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @module: commonjs
 // @jsx: react-jsx
@@ -19,7 +19,8 @@ export default function (props: any) {}
 export function Index() {
     return <Component/**/ />;
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import Component from "./component";

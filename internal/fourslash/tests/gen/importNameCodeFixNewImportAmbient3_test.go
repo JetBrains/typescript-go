@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFixNewImportAmbient3(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `let a = "I am a non-trivial statement that appears before imports";
 import d from "other-ambient-module"
@@ -29,7 +29,8 @@ declare module "yet-another-ambient-module" {
    export function f3();
    export var v3;
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyImportFixAtPosition(t, []string{
 		`let a = "I am a non-trivial statement that appears before imports";
 import { v1 } from "ambient-module";

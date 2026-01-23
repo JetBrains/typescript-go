@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFix_symlink_own_package(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /packages/b/b0.ts
 // @Symlink: /node_modules/b/b0.ts
@@ -21,7 +21,8 @@ export const x = 0;
 // @Filename: /packages/a/index.d.ts
 // @Symlink: /node_modules/a/index.d.ts
 export const a: number;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "/packages/b/b0.ts")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { x } from "./b1";

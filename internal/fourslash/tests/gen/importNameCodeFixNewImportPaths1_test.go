@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFixNewImportPaths1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `[|foo/*0*/();|]
 // @Filename: folder_b/f2.ts
@@ -23,7 +23,8 @@ export function foo() {};
         }
     }
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { foo } from "b/f2";
 

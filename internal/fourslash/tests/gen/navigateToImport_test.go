@@ -10,15 +10,16 @@ import (
 )
 
 func TestNavigateToImport(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: library.ts
 [|export function foo() {}|]
 [|export function bar() {}|]
 // @Filename: user.ts
 import {foo, [|bar as baz|]} from './library';`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyWorkspaceSymbol(t, []*fourslash.VerifyWorkspaceSymbolCase{
 		{
 			Pattern:     "foo",

@@ -11,8 +11,8 @@ import (
 )
 
 func TestCompletionsImportPathsConflict(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /tsconfig.json
 {
@@ -31,7 +31,8 @@ export function configureStore() {}
 // @Filename: /src/tests/createAsyncThunk.typetest.ts
 import {} from "@reduxjs/toolkit";
 /**/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyCompletions(t, "", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,
 		ItemDefaults: &fourslash.CompletionsExpectedItemDefaults{
@@ -43,7 +44,7 @@ import {} from "@reduxjs/toolkit";
 				&lsproto.CompletionItem{
 					Label: "configureStore",
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "@reduxjs/toolkit",
 						},
 					},
@@ -56,9 +57,7 @@ import {} from "@reduxjs/toolkit";
 	f.VerifyApplyCodeActionFromCompletion(t, PtrTo(""), &fourslash.ApplyCodeActionFromCompletionOptions{
 		Name:   "configureStore",
 		Source: "@reduxjs/toolkit",
-		AutoImportData: &lsproto.AutoImportData{
-			ExportName:      "configureStore",
-			FileName:        "/src/configureStore.ts",
+		AutoImportFix: &lsproto.AutoImportFix{
 			ModuleSpecifier: "@reduxjs/toolkit",
 		},
 		Description: "Update import from \"@reduxjs/toolkit\"",

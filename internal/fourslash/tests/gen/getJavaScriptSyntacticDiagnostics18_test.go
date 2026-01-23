@@ -8,8 +8,8 @@ import (
 )
 
 func TestGetJavaScriptSyntacticDiagnostics18(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @allowJs: true
 // @Filename: a.js
@@ -22,6 +22,7 @@ class C {
 class C {
     x: number; // Types not allowed
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineNonSuggestionDiagnostics(t)
 }

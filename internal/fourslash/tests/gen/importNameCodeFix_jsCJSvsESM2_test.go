@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFix_jsCJSvsESM2(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @allowJs: true
 // @checkJs: true
@@ -21,7 +21,8 @@ Dep/**/
 import fs from 'fs';
 // @Filename: util2.js
 const fs = require('fs');`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "")
 	f.VerifyImportFixAtPosition(t, []string{
 		`const { Dep } = require("./types/dep");

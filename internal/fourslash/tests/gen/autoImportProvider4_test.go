@@ -8,8 +8,8 @@ import (
 )
 
 func TestAutoImportProvider4(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /home/src/workspaces/project/a/package.json
 { "dependencies": { "b": "*" } }
@@ -24,7 +24,8 @@ new Shape/**/
 // @Filename: /home/src/workspaces/project/b/index.ts
 export class Shape {}
 // @link: /home/src/workspaces/project/b -> /home/src/workspaces/project/a/node_modules/b`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.MarkTestAsStradaServer()
 	f.GoToMarker(t, "")
 	f.VerifyImportFixAtPosition(t, []string{

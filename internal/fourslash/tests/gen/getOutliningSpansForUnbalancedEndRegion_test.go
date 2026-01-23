@@ -9,8 +9,8 @@ import (
 )
 
 func TestGetOutliningSpansForUnbalancedEndRegion(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// bottom-heavy region balance
 [|// #region matched
@@ -18,6 +18,7 @@ func TestGetOutliningSpansForUnbalancedEndRegion(t *testing.T) {
 // #endregion matched|]
 
 // #endregion unmatched`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyOutliningSpans(t, lsproto.FoldingRangeKindRegion)
 }

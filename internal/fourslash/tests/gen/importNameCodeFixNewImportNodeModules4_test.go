@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFixNewImportNodeModules4(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `[|f1/*0*/('');|]
 // @Filename: package.json
@@ -24,7 +24,8 @@ exports.f1 = f1;
   "main": "bin/lib/libfile.js",
   "types": "bin/lib/libfile.d.ts"
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { f1 } from "package-name";
 

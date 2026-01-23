@@ -8,8 +8,8 @@ import (
 )
 
 func TestAutoImportTypeImport3(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @verbatimModuleSyntax: true
 // @target: esnext
@@ -22,7 +22,8 @@ export class D = { y: string };
 import { A, type B, type C } from './foo';
 const b: B | C;
 console.log(A, D/**/);`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { A, D, type B, type C } from './foo';

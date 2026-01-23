@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFix_preferBaseUrl(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /tsconfig.json
 { "compilerOptions": { "baseUrl": "./src" } }
@@ -17,7 +17,8 @@ func TestImportNameCodeFix_preferBaseUrl(t *testing.T) {
 foo/**/;
 // @Filename: /src/d0/a.ts
 export const foo = 0;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "/src/d0/d1/d2/file.ts")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { foo } from "d0/a";

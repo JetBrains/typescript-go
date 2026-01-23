@@ -8,8 +8,8 @@ import (
 )
 
 func TestGoToImplementationInterface_01(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `interface Fo/*interface_definition*/o { hello(): void }
 
@@ -31,6 +31,7 @@ class [|NotAbstractBar|] extends AbstractBar {
 var x = new SuperBar();
 var y: SuperBar = new SuperBar();
 var z: AbstractBar = new NotAbstractBar();`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineGoToImplementation(t, "interface_definition")
 }

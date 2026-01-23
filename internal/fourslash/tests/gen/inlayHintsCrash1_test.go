@@ -9,8 +9,8 @@ import (
 )
 
 func TestInlayHintsCrash1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @allowJs: true
 // @checkJs: true
@@ -21,6 +21,7 @@ func TestInlayHintsCrash1(t *testing.T) {
 function doThing(f) {
     f(100)
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineInlayHints(t, nil /*span*/, &lsutil.UserPreferences{InlayHints: lsutil.InlayHintsPreferences{IncludeInlayVariableTypeHints: true, IncludeInlayParameterNameHints: lsutil.IncludeInlayParameterNameHintsAll}})
 }

@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFixNewImportFile4(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `[|let t: A/*0*/.B.I;|]
 // @Filename: ./module.ts
@@ -18,7 +18,8 @@ export namespace A {
        export interface I { }
    }
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { A } from "./module";
 

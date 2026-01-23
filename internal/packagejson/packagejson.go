@@ -3,6 +3,7 @@ package packagejson
 import (
 	json "github.com/go-json-experiment/json"
 	"github.com/go-json-experiment/json/jsontext"
+	"github.com/microsoft/typescript-go/internal/collections"
 )
 
 type HeaderFields struct {
@@ -53,6 +54,58 @@ func (df *DependencyFields) HasDependency(name string) bool {
 		}
 	}
 	return false
+}
+
+func (df *DependencyFields) RangeDependencies(f func(name, version, dependencyField string) bool) {
+	if deps, ok := df.Dependencies.GetValue(); ok {
+		for name, version := range deps {
+			if !f(name, version, "dependencies") {
+				return
+			}
+		}
+	}
+	if devDeps, ok := df.DevDependencies.GetValue(); ok {
+		for name, version := range devDeps {
+			if !f(name, version, "devDependencies") {
+				return
+			}
+		}
+	}
+	if peerDeps, ok := df.PeerDependencies.GetValue(); ok {
+		for name, version := range peerDeps {
+			if !f(name, version, "peerDependencies") {
+				return
+			}
+		}
+	}
+	if optDeps, ok := df.OptionalDependencies.GetValue(); ok {
+		for name, version := range optDeps {
+			if !f(name, version, "optionalDependencies") {
+				return
+			}
+		}
+	}
+}
+
+func (df *DependencyFields) GetRuntimeDependencyNames() *collections.Set[string] {
+	var count int
+	deps, _ := df.Dependencies.GetValue()
+	count += len(deps)
+	peerDeps, _ := df.PeerDependencies.GetValue()
+	count += len(peerDeps)
+	optDeps, _ := df.OptionalDependencies.GetValue()
+	count += len(optDeps)
+	names := collections.NewSetWithSizeHint[string](count)
+	for name := range deps {
+		names.Add(name)
+	}
+	for name := range peerDeps {
+		names.Add(name)
+	}
+	for name := range optDeps {
+		names.Add(name)
+	}
+	return names
 }
 
 type Fields struct {

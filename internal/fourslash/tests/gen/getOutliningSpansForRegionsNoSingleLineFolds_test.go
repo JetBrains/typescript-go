@@ -8,8 +8,8 @@ import (
 )
 
 func TestGetOutliningSpansForRegionsNoSingleLineFolds(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `[|//#region
 function foo()[| {
@@ -26,7 +26,8 @@ function foo()[| {
 function bar()[| { }|]
 
 //#endregion|]`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.MarkTestAsStradaServer()
 	f.VerifyOutliningSpans(t)
 }

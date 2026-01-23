@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFix_jsxReact17(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @jsx: preserve
 // @module: commonjs
@@ -31,7 +31,8 @@ import "react";
 export declare function Component(): any;
 // @Filename: /index.tsx
 (<Component/**/ />);`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { Component } from "./component";

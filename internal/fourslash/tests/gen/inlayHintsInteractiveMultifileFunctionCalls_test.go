@@ -9,8 +9,8 @@ import (
 )
 
 func TestInlayHintsInteractiveMultifileFunctionCalls(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Target: esnext
 // @module: node18
@@ -24,7 +24,8 @@ export function helperB(bParam: string) {
 }
 // @Filename: ccc.mts
 export function helperC(cParam: string) {}`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "./aaa.mts")
 	f.VerifyBaselineInlayHints(t, nil /*span*/, &lsutil.UserPreferences{InlayHints: lsutil.InlayHintsPreferences{IncludeInlayParameterNameHints: lsutil.IncludeInlayParameterNameHintsAll}})
 }

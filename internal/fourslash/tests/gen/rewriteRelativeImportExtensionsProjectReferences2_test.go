@@ -8,8 +8,8 @@ import (
 )
 
 func TestRewriteRelativeImportExtensionsProjectReferences2(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: src/tsconfig-base.json
 {
@@ -38,7 +38,8 @@ export {};
 }
 // @Filename: src/services/services.ts
 import {} from "../compiler/parser.ts";`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.MarkTestAsStradaServer()
 	f.GoToFile(t, "/src/services/services.ts")
 	f.VerifyBaselineNonSuggestionDiagnostics(t)

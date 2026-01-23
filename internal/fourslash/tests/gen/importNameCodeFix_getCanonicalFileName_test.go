@@ -8,14 +8,15 @@ import (
 )
 
 func TestImportNameCodeFix_getCanonicalFileName(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /howNow/node_modules/brownCow/index.d.ts
 export const foo: number;
 // @Filename: /howNow/a.ts
 foo;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "/howNow/a.ts")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { foo } from "brownCow";

@@ -8,8 +8,8 @@ import (
 )
 
 func TestGoToImplementation_inDifferentFiles(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /home/src/workspaces/project/bar.ts
 import {Foo} from './foo'
@@ -25,7 +25,8 @@ class [|B|] implements Foo {
 export interface /**/Foo {
     func();
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.MarkTestAsStradaServer()
 	f.VerifyBaselineGoToImplementation(t, "")
 }

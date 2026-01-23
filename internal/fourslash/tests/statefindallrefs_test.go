@@ -47,7 +47,8 @@ import { /*fooIndirect3Import*/foo } from '../target/src/main';
 foo()
 export function bar() {}
 `
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	// Ensure configured project is found for open file
 	f.GoToMarker(t, "mainFoo")
 	// !!! TODO Verify errors
@@ -142,7 +143,8 @@ export const indirect = 1;
 	]
 }
 `
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	// Ensure configured project is found for open file
 	f.GoToMarker(t, "mainFoo")
 	// !!! TODO Verify errors
@@ -203,7 +205,8 @@ import { /*fooIndirect3Import*/foo } from '../target/src/main';
 foo()
 export function bar() {}
 `
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	// Ensure configured project is found for open file
 	f.GoToMarker(t, "mainFoo")
 	// !!! TODO Verify errors
@@ -300,7 +303,8 @@ export const indirect = 1;
 	]
 }
 `
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	// Ensure configured project is found for open file
 	f.GoToMarker(t, "mainFoo")
 	// !!! TODO Verify errors
@@ -396,7 +400,8 @@ export const indirect = 1;
 	]
 }
 `
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	// Ensure configured project is found for open file
 	f.GoToMarker(t, "mainFoo")
 	// !!! TODO Verify errors
@@ -458,7 +463,8 @@ import { /*fooIndirect3Import*/foo } from '../target/src/main';
 foo()
 export function bar() {}
 `
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	// Ensure configured project is found for open file
 	f.GoToMarker(t, "mainFoo")
 	// !!! TODO Verify errors
@@ -532,7 +538,8 @@ function foo() {
 		{ "path": "./common" },
 	],
 }`, core.IfElse(disableSourceOfProjectReferenceRedirect, "// @tsc: --build /src/tsconfig.json", ""), disableSourceOfProjectReferenceRedirect, disableSourceOfProjectReferenceRedirect)
-			f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+			f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+			defer done()
 			f.GoToMarker(t, "keyboard")
 			f.GoToMarker(t, "terminal")
 			// Find all ref in default project
@@ -595,7 +602,8 @@ namespace ts {
 namespace ts {
 	const result = program.getSourceFiles();
 }`, disableSolutionSearching)
-			f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+			f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+			defer done()
 			// Find all references for getSourceFile
 			// Shouldnt load more projects
 			f.VerifyBaselineFindAllReferences(t, "local")
@@ -678,7 +686,8 @@ import { I } from "../a";
 import { C } from "../c";
 export const D: I = C;
 `
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 
 	// The first search will trigger project loads
 	f.VerifyBaselineFindAllReferences(t, "")
@@ -824,7 +833,8 @@ export const noCoreRef2Const = 10;
 		"composite": true,
 	},
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "main")
 	f.VerifyBaselineFindAllReferences(t, "find")
 }
@@ -876,7 +886,8 @@ export interface Bar {
 const bar: Bar = {
 	prop: 1
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "change")
 	f.GoToMarker(t, "prop")
 
@@ -909,7 +920,8 @@ export function foobar() {}
 // @Filename: /myproject/playground/tsconfig-json/tests/spec.ts
 export function /*find*/bar() { }
 `
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "tests")
 	f.CloseFileOfMarker(t, "tests")
 	f.VerifyBaselineFindAllReferences(t, "find")
@@ -1022,10 +1034,83 @@ import * as shared from "../../shared/dist"
 }
 // @Filename: /solution/shared/src/index.ts
 ` + tc.definition
-			f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+			f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+			defer done()
 			f.VerifyBaselineFindAllReferences(t, "ref")
 		})
 	}
+}
+
+func TestFindAllRefsReExportInMultiProjectSolution(t *testing.T) {
+	t.Parallel()
+	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
+	content := `
+// @stateBaseline: true
+// @Filename: /tsconfig.base.json
+{
+	"compilerOptions": {
+		"rootDir": ".",
+		"outDir": "target",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"composite": true,
+		"declaration": true,
+		"strict": true
+	},
+	"include": []
+}
+// @Filename: /tsconfig.json
+{
+	"extends": "./tsconfig.base.json",
+	"references": [
+		{ "path": "project-a" },
+		{ "path": "project-b" },
+		{ "path": "project-c" },
+	]
+}
+// @Filename: /project-a/tsconfig.json
+{
+	"extends": "../tsconfig.base.json",
+	"include": ["*"]
+}
+// @Filename: /project-a/private.ts
+export const /*symbolA*/symbolA = 'some-symbol';
+console.log(symbolA);
+// @Filename: /project-a/public.ts
+export { symbolA } from './private';
+// @Filename: /project-b/tsconfig.json
+{
+	"extends": "../tsconfig.base.json",
+	"include": ["*"]
+}
+// @Filename: /project-b/public.ts
+export const /*symbolB*/symbolB = 'symbol-b';
+// @Filename: /project-c/tsconfig.json
+{
+	"extends": "../tsconfig.base.json",
+	"include": ["*"],
+	"references": [
+		{ "path": "../project-a" },
+		{ "path": "../project-b" },
+	]
+}
+// @Filename: /project-c/index.ts
+import { symbolB } from '../project-b/public';
+import { /*symbolAUsage*/symbolA } from '../project-a/public';
+console.log(symbolB);
+console.log(symbolA);
+`
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
+
+	// Find all refs for symbolA - should find definition in private.ts, re-export in public.ts, and usage in project-c/index.ts
+	f.VerifyBaselineFindAllReferences(t, "symbolA")
+
+	// Find all refs for symbolB - should find definition and usage (no re-export involved)
+	f.VerifyBaselineFindAllReferences(t, "symbolB")
+
+	// Find all refs from the usage site - should also work
+	f.VerifyBaselineFindAllReferences(t, "symbolAUsage")
 }
 
 func TestFindAllRefsDeclarationInOtherProject(t *testing.T) {
@@ -1109,7 +1194,8 @@ export declare class B {
 	"mappings": "AAAA,qBAAa,CAAC;IACV,CAAC;CACJ"
 }`
 			}
-			f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+			f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+			defer done()
 			if tc.projectAlreadyLoaded {
 				f.GoToMarker(t, "ref")
 				f.GoToMarker(t, "bHelper")

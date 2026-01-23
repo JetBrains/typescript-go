@@ -221,6 +221,11 @@ Ensure 'use strict' is always emitted.
 type: boolean
 default: `false`, unless `strict` is set
 
+[94m--deduplicatePackages[39m
+Deduplicate packages with the same name and version.
+type: boolean
+default: true
+
 [94m--exactOptionalPropertyTypes[39m
 Interpret optional property types as written, rather than adding 'undefined'.
 type: boolean
@@ -582,13 +587,6 @@ Enable color and formatting in TypeScript's output to make compiler errors easie
 type: boolean
 default: true
 
-### Backwards Compatibility
-
-[94m--preserveValueImports[39m
-Preserve unused imported values in the JavaScript output that would otherwise be removed.
-type: boolean
-default: false
-
 ### Completeness
 
 [94m--skipDefaultLibCheck[39m
@@ -653,6 +651,9 @@ Build all projects, including those that appear to be up to date.
 
 [94m--clean[39m
 Delete the outputs of all projects.
+
+[94m--builders[39m
+Set the number of projects to build concurrently.
 
 [94m--stopBuildOnErrors[39m
 Skip building downstream projects on error in upstream project.

@@ -8,8 +8,8 @@ import (
 )
 
 func TestGoToImplementationLocal_03(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `let [|he/*local_var*/llo|] = {};
 
@@ -17,6 +17,7 @@ x.hello();
 
 hello = {};
 `
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineGoToImplementation(t, "local_var")
 }

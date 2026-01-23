@@ -8,8 +8,8 @@ import (
 )
 
 func TestSignatureHelpOnOverloadOnConst(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `function x1(x: 'hi');
 function x1(y: 'bye');
@@ -20,7 +20,8 @@ function x1(a: any) {
 x1(''/*1*/);
 x1('hi'/*2*/);
 x1('bye'/*3*/);`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "1")
 	f.VerifySignatureHelp(t, fourslash.VerifySignatureHelpOptions{ParameterName: "z", ParameterSpan: "z: string", OverloadsCount: 3})
 	f.GoToMarker(t, "2")

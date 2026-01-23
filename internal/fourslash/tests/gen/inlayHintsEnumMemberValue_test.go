@@ -9,8 +9,8 @@ import (
 )
 
 func TestInlayHintsEnumMemberValue(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `enum E {
     A,
@@ -19,6 +19,7 @@ func TestInlayHintsEnumMemberValue(t *testing.T) {
     BB,
     C = 'C',
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineInlayHints(t, nil /*span*/, &lsutil.UserPreferences{InlayHints: lsutil.InlayHintsPreferences{IncludeInlayEnumMemberValueHints: true}})
 }

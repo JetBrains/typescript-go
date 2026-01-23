@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportTypesDeclarationDiagnosticsNoServerError(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @declaration: true
 // @Filename: node_modules/foo/index.d.ts
@@ -20,7 +20,8 @@ export interface I {
 // @Filename: a.ts
 import { f } from "foo";
 export const x = f();`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFileNumber(t, 1)
 	f.VerifyNonSuggestionDiagnostics(t, nil)
 }

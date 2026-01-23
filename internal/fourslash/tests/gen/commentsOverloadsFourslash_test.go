@@ -10,8 +10,8 @@ import (
 )
 
 func TestCommentsOverloadsFourslash(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `/** this is signature 1*/
 function /*1*/f1(/**param a*/a: number): number;
@@ -237,7 +237,8 @@ ambient/*76*/F1(true);
 function foo(a/*77*/a: i3) {
 }
 foo(null);`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyQuickInfoAt(t, "1", "function f1(a: number): number (+1 overload)", "this is signature 1")
 	f.VerifyQuickInfoAt(t, "2", "function f1(b: string): number (+1 overload)", "this is signature 1")
 	f.VerifyQuickInfoAt(t, "3", "function f1(a: number): number (+1 overload)", "this is signature 1")

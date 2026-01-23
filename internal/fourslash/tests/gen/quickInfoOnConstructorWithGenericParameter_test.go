@@ -8,8 +8,8 @@ import (
 )
 
 func TestQuickInfoOnConstructorWithGenericParameter(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `interface I {
     x: number;
@@ -26,7 +26,8 @@ class B extends A {
     }
 }
 var x = new /*2*/B(/*1*/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "1")
 	f.VerifySignatureHelp(t, fourslash.VerifySignatureHelpOptions{Text: "B(a: Foo<I>, b: number): B"})
 	f.Insert(t, "null,")

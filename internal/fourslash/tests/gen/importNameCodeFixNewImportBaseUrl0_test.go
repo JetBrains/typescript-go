@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFixNewImportBaseUrl0(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `[|f1/*0*/();|]
 // @Filename: tsconfig.json
@@ -20,7 +20,8 @@ func TestImportNameCodeFixNewImportBaseUrl0(t *testing.T) {
 }
 // @Filename: a/b.ts
 export function f1() { };`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { f1 } from "b";
 

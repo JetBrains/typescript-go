@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFix_avoidRelativeNodeModules(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /a/index.d.ts
 // @Symlink: /b/node_modules/a/index.d.ts
@@ -24,7 +24,8 @@ import { a } from "a";
 // @Filename: /c/foo.ts
 [|import { b } from "b";
 a;|]`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "/c/foo.ts")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { a } from "a";

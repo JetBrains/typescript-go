@@ -10,8 +10,8 @@ import (
 )
 
 func TestSuggestionOfUnusedVariableWithExternalModule(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `//@allowJs: true
 // @Filename: /mymodule.js
@@ -24,7 +24,8 @@ func TestSuggestionOfUnusedVariableWithExternalModule(t *testing.T) {
 // @Filename: /app.js
 //@ts-check
 require("./mymodule");`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "/app.js")
 	f.VerifySuggestionDiagnostics(t, nil)
 	f.GoToFile(t, "/mymodule.js")

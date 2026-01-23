@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFix_withJson(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /a.ts
 export const a = 'a';
@@ -17,7 +17,8 @@ export const a = 'a';
 import "./anything.json";
 
 a/**/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "/b.ts")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { a } from "./a";

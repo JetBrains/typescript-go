@@ -56,23 +56,31 @@ export const ADMIN = MetadataAccessor.create<boolean>('1');
 }
 
 tsgo -p pkg3 --explainFiles
-ExitStatus:: Success
+ExitStatus:: DiagnosticsPresent_OutputsGenerated
 Output::
+[96mpkg3/src/keys.ts[0m:[93m2[0m:[93m14[0m - [91merror[0m[90m TS2742: [0mThe inferred type of 'ADMIN' cannot be named without a reference to '../../pkg2/node_modules/@raymondfeng/pkg1/dist'. This is likely not portable. A type annotation is necessary.
+
+[7m2[0m export const ADMIN = MetadataAccessor.create<boolean>('1');
+[7m [0m [91m             ~~~~~[0m
+
 ../../../../home/src/tslibs/TS/Lib/lib.d.ts
    Default library for target 'ES5'
 pkg1/dist/types.d.ts
    Imported via './types' from file 'pkg1/dist/index.d.ts'
 pkg1/dist/index.d.ts
-   Imported via '@raymondfeng/pkg1' from file 'pkg2/dist/types.d.ts' with packageId '@raymondfeng/pkg1@1.0.0'
+   Imported via '@raymondfeng/pkg1' from file 'pkg2/dist/types.d.ts' with packageId '@raymondfeng/pkg1/dist/index.d.ts@1.0.0'
 pkg2/dist/types.d.ts
    Imported via './types' from file 'pkg2/dist/index.d.ts'
 pkg2/dist/index.d.ts
-   Imported via "@raymondfeng/pkg2" from file 'pkg3/src/keys.ts' with packageId '@raymondfeng/pkg2@1.0.0'
+   Imported via "@raymondfeng/pkg2" from file 'pkg3/src/keys.ts' with packageId '@raymondfeng/pkg2/dist/index.d.ts@1.0.0'
 pkg3/src/keys.ts
    Imported via './keys' from file 'pkg3/src/index.ts'
    Matched by default include pattern '**/*'
 pkg3/src/index.ts
    Matched by default include pattern '**/*'
+
+Found 1 error in pkg3/src/keys.ts[90m:2[0m
+
 //// [/home/src/tslibs/TS/Lib/lib.d.ts] *Lib*
 /// <reference no-default-lib="true"/>
 interface Boolean {}
@@ -120,7 +128,7 @@ __exportStar(require("./keys"), exports);
 
 //// [/user/username/projects/myproject/pkg3/dist/keys.d.ts] *new* 
 import { MetadataAccessor } from "@raymondfeng/pkg2";
-export declare const ADMIN: MetadataAccessor<boolean, import("../../pkg1/dist").IdType>;
+export declare const ADMIN: any;
 
 //// [/user/username/projects/myproject/pkg3/dist/keys.js] *new* 
 "use strict";

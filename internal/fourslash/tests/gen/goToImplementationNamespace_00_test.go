@@ -8,8 +8,8 @@ import (
 )
 
 func TestGoToImplementationNamespace_00(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `namespace /*implementation0*/Foo {
     export function hello() {}
@@ -21,6 +21,7 @@ module /*implementation1*/Bar {
 
 let x = Fo/*reference0*/o;
 let y = Ba/*reference1*/r;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineGoToImplementation(t, "reference0", "reference1")
 }

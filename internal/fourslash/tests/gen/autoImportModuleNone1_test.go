@@ -9,8 +9,8 @@ import (
 )
 
 func TestAutoImportModuleNone1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @module: none
 // @moduleResolution: bundler
@@ -19,7 +19,8 @@ func TestAutoImportModuleNone1(t *testing.T) {
 export const x: number;
 // @Filename: /index.ts
  x/**/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyCompletions(t, "", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,
 		ItemDefaults: &fourslash.CompletionsExpectedItemDefaults{

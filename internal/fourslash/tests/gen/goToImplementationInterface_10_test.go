@@ -8,8 +8,8 @@ import (
 )
 
 func TestGoToImplementationInterface_10(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /a.ts
 interface /*def*/A {
@@ -23,6 +23,7 @@ export class [|C|] implements B {
 	bar = true;
 }
 export class [|D|] extends C { }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineGoToImplementation(t, "def")
 }

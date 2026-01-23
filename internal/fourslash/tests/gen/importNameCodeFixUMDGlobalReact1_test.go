@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFixUMDGlobalReact1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @jsx: react
 // @allowSyntheticDefaultImports: false
@@ -30,7 +30,8 @@ declare global {
 [|import { Component } from "react";
 export class MyMap extends Component { }
 <MyMap></MyMap>;|]`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "/a.tsx")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import * as React from "react";

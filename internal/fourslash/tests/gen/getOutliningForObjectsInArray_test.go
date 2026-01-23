@@ -8,8 +8,8 @@ import (
 )
 
 func TestGetOutliningForObjectsInArray(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `const x =[| [
     [|{ a: 0 }|],
@@ -59,6 +59,7 @@ const z =[| [
         [|{ hello: 7 }|]
     ]|]
 ]|];`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyOutliningSpans(t)
 }

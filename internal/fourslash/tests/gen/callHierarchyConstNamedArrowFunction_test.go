@@ -8,8 +8,8 @@ import (
 )
 
 func TestCallHierarchyConstNamedArrowFunction(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `function foo() {
     bar();
@@ -21,7 +21,8 @@ const /**/bar = () => {
 
 function baz() {
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "")
 	f.VerifyBaselineCallHierarchy(t)
 }

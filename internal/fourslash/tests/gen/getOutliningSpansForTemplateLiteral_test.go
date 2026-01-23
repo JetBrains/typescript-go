@@ -8,8 +8,8 @@ import (
 )
 
 func TestGetOutliningSpansForTemplateLiteral(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `declare function tag(...args: any[]): void
 const a = [|` + "`" + `signal line` + "`" + `|]
@@ -27,6 +27,7 @@ const h = tag[|` + "`" + `multi
 ${1}
 line` + "`" + `|]
 const i = ` + "`" + `` + "`" + ``
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyOutliningSpans(t)
 }

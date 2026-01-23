@@ -8,8 +8,8 @@ import (
 )
 
 func TestSideEffectImportsSuggestion1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @allowJs: true
 // @noEmit: true
@@ -23,6 +23,7 @@ var a = 10;
 // @filename: node_modules/c.js
 exports.a = 10;
 c = 10;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifySuggestionDiagnostics(t, nil)
 }

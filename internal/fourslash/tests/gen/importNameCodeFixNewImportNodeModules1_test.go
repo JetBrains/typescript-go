@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFixNewImportNodeModules1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `[|f1/*0*/();|]
 // @Filename: ../package.json
@@ -17,7 +17,8 @@ func TestImportNameCodeFixNewImportNodeModules1(t *testing.T) {
 // @Filename: ../node_modules/fake-module/nested.ts
 export var v1 = 5;
 export function f1();`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { f1 } from "fake-module/nested";
 

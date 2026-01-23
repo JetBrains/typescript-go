@@ -8,8 +8,8 @@ import (
 )
 
 func TestSignatureHelpForNonlocalTypeDoesNotUseImportType(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: exporter.ts
 export interface Thing {}
@@ -18,7 +18,8 @@ export const Foo: () => Thing = null as any;
 import {Foo} from "./exporter"
 function f(p = Foo()): void {}
 f(/*1*/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "1")
 	f.VerifySignatureHelp(t, fourslash.VerifySignatureHelpOptions{Text: "f(p?: Thing): void"})
 }

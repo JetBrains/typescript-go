@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFix_importType8(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @module: es2015
 // @verbatimModuleSyntax: true
@@ -19,7 +19,8 @@ export class SomePig {}
 // @Filename: /a.ts
 import type { SomeInterface, SomePig } from "./exports.js";
 new SomePig/**/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import { SomePig, type SomeInterface } from "./exports.js";

@@ -8,8 +8,8 @@ import (
 )
 
 func TestGoToImplementationEnum_01(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `enum [|Foo|] {
     Foo1 = function initializer() { return 5 } (),
@@ -17,6 +17,7 @@ func TestGoToImplementationEnum_01(t *testing.T) {
 }
 
 Fo/*reference*/o;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineGoToImplementation(t, "reference")
 }

@@ -8,13 +8,14 @@ import (
 )
 
 func TestSignatureHelpTaggedTemplatesNegatives1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `function f(templateStrings, x, y, z) { return 10; }
 function g(templateStrings, x, y, z) { return ""; }
 
 /*1*/f/*2*/ /*3*/` + "`" + ` qwerty ${ 123 } asdf ${   41234   }  zxcvb ${ g ` + "`" + `    ` + "`" + ` }     ` + "`" + `/*4*/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyNoSignatureHelpForMarkers(t, f.MarkerNames()...)
 }

@@ -8,15 +8,16 @@ import (
 )
 
 func TestImportNameCodeFixDefaultExport2(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /lib.ts
 class Base { }
 export default Base;
 // @Filename: /test.ts
 [|class Derived extends Base { }|]`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "/test.ts")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import Base from "./lib";

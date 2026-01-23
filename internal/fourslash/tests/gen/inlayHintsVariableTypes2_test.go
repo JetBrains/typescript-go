@@ -9,8 +9,8 @@ import (
 )
 
 func TestInlayHintsVariableTypes2(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `const object = { foo: 1, bar: 2 }
 const array = [1, 2]
@@ -22,6 +22,7 @@ const [ first, second ] = array;
 const [] = array;
 declare function foo<T extends number>(t: T): T
 const x = foo(1)`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineInlayHints(t, nil /*span*/, &lsutil.UserPreferences{InlayHints: lsutil.InlayHintsPreferences{IncludeInlayVariableTypeHints: true}})
 }

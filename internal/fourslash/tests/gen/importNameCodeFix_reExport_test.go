@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFix_reExport(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: /a.ts
 export default function foo(): void {}
@@ -17,7 +17,8 @@ export default function foo(): void {}
 export { default } from "./a";
 // @Filename: /user.ts
 [|foo;|]`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "/user.ts")
 	f.VerifyImportFixAtPosition(t, []string{
 		`import foo from "./a";

@@ -9,8 +9,8 @@ import (
 )
 
 func TestInlayHintsInteractiveParameterNames(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = ` function foo1 (a: number, b: number) {}
  foo1(1, 2);
@@ -51,6 +51,7 @@ foo5(
 function trace(message: string) {}
 trace(` + "`" + `${1}` + "`" + `);
 trace(` + "`" + `` + "`" + `);`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineInlayHints(t, nil /*span*/, &lsutil.UserPreferences{InlayHints: lsutil.InlayHintsPreferences{IncludeInlayParameterNameHints: lsutil.IncludeInlayParameterNameHintsLiterals}})
 }

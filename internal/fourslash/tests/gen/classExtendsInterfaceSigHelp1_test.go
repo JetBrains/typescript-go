@@ -8,8 +8,8 @@ import (
 )
 
 func TestClassExtendsInterfaceSigHelp1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `class C {
     public foo(x: string);
@@ -21,7 +21,8 @@ interface I extends C {
 }
 var i: I;
 i.foo(/**/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "")
 	f.VerifySignatureHelp(t, fourslash.VerifySignatureHelpOptions{ParameterSpan: "x: string", OverloadsCount: 2})
 }

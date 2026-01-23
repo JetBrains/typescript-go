@@ -11,8 +11,8 @@ import (
 )
 
 func TestCompletionsImport_exportEquals_anonymous(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @noLib: true
 // @module: commonjs
@@ -23,7 +23,8 @@ export = 0;
 // @Filename: /src/b.ts
 exp/*0*/
 fooB/*1*/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "0")
 	f.VerifyCompletions(t, "0", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,
@@ -48,7 +49,7 @@ fooB/*1*/`
 					&lsproto.CompletionItem{
 						Label: "fooBar",
 						Data: &lsproto.CompletionItemData{
-							AutoImport: &lsproto.AutoImportData{
+							AutoImport: &lsproto.AutoImportFix{
 								ModuleSpecifier: "./foo-bar",
 							},
 						},

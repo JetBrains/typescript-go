@@ -8,8 +8,8 @@ import (
 )
 
 func TestCallHierarchyCrossFile(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @filename: /a.ts
 export function /**/createModelReference() {}
@@ -23,7 +23,8 @@ import { createModelReference } from "./a";
 function registerDefaultLanguageCommand() {
   createModelReference();
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "")
 	f.VerifyBaselineCallHierarchy(t)
 }

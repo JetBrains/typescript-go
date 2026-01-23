@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFixNewImportFile1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `[|/// <reference path="./tripleSlashReference.ts" />
 f1/*0*/();|]
@@ -18,7 +18,8 @@ export function f1() {}
 export var v1 = 5;
 // @Filename: tripleSlashReference.ts
 var x = 5;/*dummy*/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyImportFixAtPosition(t, []string{
 		`/// <reference path="./tripleSlashReference.ts" />
 

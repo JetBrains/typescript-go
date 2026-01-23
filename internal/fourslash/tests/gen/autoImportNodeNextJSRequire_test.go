@@ -8,8 +8,8 @@ import (
 )
 
 func TestAutoImportNodeNextJSRequire(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @module: node18
 // @allowJs: true
@@ -23,7 +23,8 @@ exports.dedupeLines = data => {
 }
 // @Filename: /totally-irrelevant-no-way-this-changes-things-right.js
 export default 0;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "/main.js")
 	f.VerifyImportFixAtPosition(t, []string{
 		`const { variants } = require("./matrix")

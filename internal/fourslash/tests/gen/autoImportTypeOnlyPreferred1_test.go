@@ -11,8 +11,8 @@ import (
 )
 
 func TestAutoImportTypeOnlyPreferred1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @verbatimModuleSyntax: true
 // @module: esnext
@@ -29,7 +29,8 @@ export = ts;
 export interface VFS {
   getSourceFile(path: string): ts/**/
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyCompletions(t, "", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,
 		ItemDefaults: &fourslash.CompletionsExpectedItemDefaults{
@@ -41,7 +42,7 @@ export interface VFS {
 				&lsproto.CompletionItem{
 					Label: "ts",
 					Data: &lsproto.CompletionItemData{
-						AutoImport: &lsproto.AutoImportData{
+						AutoImport: &lsproto.AutoImportFix{
 							ModuleSpecifier: "./ts",
 						},
 					},

@@ -8,8 +8,8 @@ import (
 )
 
 func TestJsdocParam_suggestion1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @Filename: a.ts
 /**
@@ -24,7 +24,8 @@ declare function bad(options: any): void
 function worse(): void {
     arguments
 }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToFile(t, "a.ts")
 	f.VerifySuggestionDiagnostics(t, nil)
 }

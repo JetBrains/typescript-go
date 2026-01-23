@@ -9,8 +9,8 @@ import (
 )
 
 func TestGetOutliningSpansForComments(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `[|/*
     Block comment at the beginning of the file before module:
@@ -26,7 +26,8 @@ declare module "m";
 // line 3
 // line 4|]
 declare module "n";`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.MarkTestAsStradaServer()
 	f.VerifyOutliningSpans(t, lsproto.FoldingRangeKindComment)
 }

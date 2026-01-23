@@ -8,8 +8,8 @@ import (
 )
 
 func TestAutoImportPackageJsonFilterExistingImport3(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @module: preserve
 // @Filename: /home/src/workspaces/project/node_modules/@types/node/index.d.ts
@@ -21,7 +21,8 @@ declare module "node:fs" {
 {}
 // @Filename: /home/src/workspaces/project/index.ts
 readFile/**/`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.MarkTestAsStradaServer()
 	f.GoToMarker(t, "")
 	f.VerifyImportFixAtPosition(t, []string{}, nil /*preferences*/)

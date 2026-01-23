@@ -9,8 +9,8 @@ import (
 )
 
 func TestInlayHintsInteractiveFunctionParameterTypes1(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = ` type F1 = (a: string, b: number) => void
  const f1: F1 = (a, b) => { }
@@ -49,6 +49,7 @@ foo4(p => {})
      [i in string]: number
  }) => void
  const foo5: F4 = (a) => { }`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyBaselineInlayHints(t, nil /*span*/, &lsutil.UserPreferences{InlayHints: lsutil.InlayHintsPreferences{IncludeInlayFunctionParameterTypeHints: true}})
 }

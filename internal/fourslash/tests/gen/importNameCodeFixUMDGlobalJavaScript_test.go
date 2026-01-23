@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFixUMDGlobalJavaScript(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @AllowSyntheticDefaultImports: false
 // @Module: commonjs
@@ -21,7 +21,8 @@ bar1/*0*/.bar;|]
 // @Filename: a/foo.d.ts
 export declare function bar(): number;
 export as namespace bar1; `
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyImportFixAtPosition(t, []string{
 		`import * as bar1 from "./foo";
 

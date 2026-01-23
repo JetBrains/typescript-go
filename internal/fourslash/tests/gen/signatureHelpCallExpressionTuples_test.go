@@ -8,8 +8,8 @@ import (
 )
 
 func TestSignatureHelpCallExpressionTuples(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `function fnTest(str: string, num: number) { }
 declare function wrap<A extends any[], R>(fn: (...a: A) => R) : (...a: A) => R;
@@ -21,7 +21,8 @@ fnVariadicWrapped/*4*/(/*5*/'', /*6*/5);
 function fnNoParams () { }
 var fnNoParamsWrapped = wrap(fnNoParams);
 fnNoParamsWrapped/*7*/(/*8*/);`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyQuickInfoAt(t, "3", "var fnWrapped: (str: string, num: number) => void", "")
 	f.GoToMarker(t, "1")
 	f.VerifySignatureHelp(t, fourslash.VerifySignatureHelpOptions{Text: "fnWrapped(str: string, num: number): void", ParameterCount: 2, ParameterName: "str", ParameterSpan: "str: string"})

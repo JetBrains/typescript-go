@@ -8,8 +8,8 @@ import (
 )
 
 func TestSignatureHelpTypeArguments(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `declare function f(a: number, b: string, c: boolean): void; // ignored, not generic
 declare function f<T extends number>(): void;
@@ -27,7 +27,8 @@ declare const C: {
 new C</*C0*/;
 new C<number, /*C1*/;
 new C<number, string, /*C2*/;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.GoToMarker(t, "f0")
 	f.VerifySignatureHelp(t, fourslash.VerifySignatureHelpOptions{Text: "f<T extends number>(): void", ParameterName: "T", ParameterSpan: "T extends number", OverloadsCount: 3})
 	f.GoToMarker(t, "f1")

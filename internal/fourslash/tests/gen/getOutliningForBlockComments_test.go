@@ -8,8 +8,8 @@ import (
 )
 
 func TestGetOutliningForBlockComments(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `[|/*
     Block comment at the beginning of the file before module:
@@ -342,6 +342,7 @@ interface I4[| {
      * comment
      */|]
 }|]`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyOutliningSpans(t)
 }

@@ -276,7 +276,7 @@ func (c *Checker) discriminateContextualTypeByJSXAttributes(node *ast.Node, cont
 		return (initializer == nil || c.isPossiblyDiscriminantValue(initializer)) && c.isDiscriminantProperty(contextualType, symbol.Name)
 	})
 	discriminantMembers := core.Filter(c.getPropertiesOfType(contextualType), func(s *ast.Symbol) bool {
-		if s.Flags&ast.SymbolFlagsOptional == 0 || node.Symbol() == nil || len(node.Symbol().Members) == 0 {
+		if s.Flags&ast.SymbolFlagsOptional == 0 || node.Symbol() == nil {
 			return false
 		}
 		element := node.Parent.Parent
@@ -1030,7 +1030,7 @@ func (c *Checker) getJsxManagedAttributesFromLocatedAttributes(context *ast.Node
 
 func (c *Checker) instantiateAliasOrInterfaceWithDefaults(managedSym *ast.Symbol, typeArguments []*Type, inJavaScript bool) *Type {
 	declaredManagedType := c.getDeclaredTypeOfSymbol(managedSym)
-	// fetches interface type, or initializes symbol links type parmaeters
+	// fetches interface type, or initializes symbol links type parameters
 	if managedSym.Flags&ast.SymbolFlagsTypeAlias != 0 {
 		params := c.typeAliasLinks.Get(managedSym).typeParameters
 		if len(params) >= len(typeArguments) {

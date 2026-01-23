@@ -10,8 +10,8 @@ import (
 )
 
 func TestCommentsVariables(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-	t.Skip()
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `/** This is my variable*/
 var myV/*1*/ariable = 10;
@@ -53,7 +53,8 @@ function foo2(b: string): void;
 function foo2(aOrb) {
 }
 var x = fo/*15*/o2;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyQuickInfoAt(t, "1", "var myVariable: number", "This is my variable")
 	f.VerifyCompletions(t, "2", &fourslash.CompletionsExpectedList{
 		IsIncomplete: false,

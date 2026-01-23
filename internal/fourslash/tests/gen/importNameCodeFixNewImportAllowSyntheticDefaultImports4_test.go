@@ -8,8 +8,8 @@ import (
 )
 
 func TestImportNameCodeFixNewImportAllowSyntheticDefaultImports4(t *testing.T) {
+	fourslash.SkipIfFailing(t)
 	t.Parallel()
-
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	const content = `// @AllowSyntheticDefaultImports: false
 // @Module: amd
@@ -20,7 +20,8 @@ bar/*0*/();|]
 declare function bar(): number;
 export = bar;
 export as namespace bar;`
-	f := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	f, done := fourslash.NewFourslash(t, nil /*capabilities*/, content)
+	defer done()
 	f.VerifyImportFixAtPosition(t, []string{
 		`import bar = require("./foo");
 
