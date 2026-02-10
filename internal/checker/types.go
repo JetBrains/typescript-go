@@ -954,7 +954,8 @@ type TupleType struct {
 	readonly      bool
 }
 
-func (t *TupleType) FixedLength() int { return t.fixedLength }
+func (t *TupleType) FixedLength() int            { return t.fixedLength }
+func (t *TupleType) CombinedFlags() ElementFlags { return t.combinedFlags }
 func (t *TupleType) ElementFlags() []ElementFlags {
 	elementFlags := make([]ElementFlags, len(t.elementInfos))
 	for i, info := range t.elementInfos {

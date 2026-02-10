@@ -371,7 +371,7 @@ func IdeGetTypeText(
 	return result, nil
 }
 
-func IdeGetCompletionSymbols(
+func IdeGetCompletionWithSymbols(
 	ctx context.Context,
 	proj *project.Project,
 	snapshot *project.Snapshot,
@@ -390,12 +390,12 @@ func IdeGetCompletionSymbols(
 
 	languageService := ls.NewLanguageService(proj.ConfigFilePath(), program, snapshot)
 
-	checker, done := languageService.GetProgram().GetTypeCheckerForFile(ctx, sourceFile)
-	defer done()
+	typeCheckerForData, doneForData := languageService.GetProgram().GetTypeCheckerForFile(ctx, sourceFile)
+	defer doneForData()
 	preferences := languageService.UserPreferences()
-	symbols := languageService.GetCompletionDataSymbols(ctx, checker, sourceFile, positionOffset, preferences)
+	completionInfo := languageService.GetCompletionInfoWithSymbols(ctx, typeCheckerForData, sourceFile, positionOffset, preferences)
 
-	if symbols == nil || len(symbols) == 0 {
+	if completionInfo == nil {
 		return nil, nil
 	}
 
@@ -404,15 +404,16 @@ func IdeGetCompletionSymbols(
 
 	convertContext := NewConvertContext(typeChecker, projectIdNum, projectVersion)
 
-	convertedSymbols := make([]interface{}, 0, len(symbols))
-	for _, symbol := range symbols {
+	convertedSymbols := make([]interface{}, 0, len(completionInfo.Symbols))
+	for _, symbol := range completionInfo.Symbols {
 		convertedSymbols = append(convertedSymbols, ConvertSymbol(symbol, convertContext))
 	}
 
 	result := collections.NewOrderedMapWithSizeHint[string, interface{}](3)
-	result.Set("symbols", convertedSymbols)
 	result.Set("ideProjectId", projectIdNum)
 	result.Set("ideTypeCheckerId", projectVersion)
+	result.Set("items", completionInfo.Items)
+	result.Set("symbols", convertedSymbols)
 	return result, nil
 }
 
@@ -700,6 +701,9 @@ func ConvertType(t *checker.Type, ctx *ConvertContext) *collections.OrderedMap[s
 				elementFlags[i] = convertElementFlags(elementInfo.ElementFlags())
 			}
 			tscType.Set("elementFlags", elementFlags)
+			if combinedFlags := convertElementFlags(tupleType.CombinedFlags()); combinedFlags != 0 {
+				tscType.Set("combinedFlags", combinedFlags)
+			}
 		}
 
 		// Add type ID

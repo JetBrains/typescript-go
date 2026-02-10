@@ -21,14 +21,14 @@ type JbHandleCustomTsServerCommandParams struct {
 type IdeCommand string
 
 const (
-	IdeCommandGetElementType       IdeCommand = "ideGetElementType"
-	IdeCommandGetSymbolType        IdeCommand = "ideGetSymbolType"
-	IdeCommandGetTypeProperties    IdeCommand = "ideGetTypeProperties"
-	IdeCommandGetTypeProperty      IdeCommand = "ideGetTypeProperty"
-	IdeCommandGetTypeText          IdeCommand = "ideGetTypeText"
-	IdeAreTypesMutuallyAssignable  IdeCommand = "ideAreTypesMutuallyAssignable"
-	IdeGetResolvedSignature        IdeCommand = "ideGetResolvedSignature"
-	IdeCommandGetCompletionSymbols IdeCommand = "ideGetCompletionSymbols"
+	IdeCommandGetElementType           IdeCommand = "ideGetElementType"
+	IdeCommandGetSymbolType            IdeCommand = "ideGetSymbolType"
+	IdeCommandGetTypeProperties        IdeCommand = "ideGetTypeProperties"
+	IdeCommandGetTypeProperty          IdeCommand = "ideGetTypeProperty"
+	IdeCommandGetTypeText              IdeCommand = "ideGetTypeText"
+	IdeAreTypesMutuallyAssignable      IdeCommand = "ideAreTypesMutuallyAssignable"
+	IdeGetResolvedSignature            IdeCommand = "ideGetResolvedSignature"
+	IdeCommandGetCompletionWithSymbols IdeCommand = "ideGetCompletionWithSymbols"
 )
 
 type TypeRequestKind string
@@ -160,7 +160,7 @@ func (p *JbHandleCustomTsServerCommandParams) UnmarshalJSON(data []byte) error {
 		}
 		args = &typedArgs
 
-	case IdeCommandGetCompletionSymbols:
+	case IdeCommandGetCompletionWithSymbols:
 		var typedArgs GetCompletionSymbolsArguments
 		if err := json.Unmarshal(temp.Arguments, &typedArgs); err != nil {
 			return fmt.Errorf("failed to unmarshal GetCompletionSymbolsArguments: %w", err)
