@@ -62,6 +62,17 @@ func (ls *LanguageService) GetCompletionInfoWithSymbols(
 	}
 }
 
+// itemSymbolName returns the original symbol name from a CompletionItem.
+// CompletionItem.Label may have a trailing '?' for optional properties
+// (added in createLSPCompletionItem), so we use FilterText when available
+// (it preserves the original name), otherwise strip the '?' suffix.
+func itemSymbolName(item *lsproto.CompletionItem) string {
+	if item.FilterText != nil {
+		return *item.FilterText
+	}
+	return item.Label
+}
+
 // matchSymbolsToItems filters symbols to match items by index.
 // Both slices are ordered consistently, but symbols may contain extra entries
 // that were filtered out during item creation. This uses two pointers to align
@@ -71,7 +82,7 @@ func matchSymbolsToItems(items []*lsproto.CompletionItem, symbols []*ast.Symbol)
 	// Count name occurrences in items
 	itemNameCounts := make(map[string]int)
 	for _, item := range items {
-		itemNameCounts[item.Label]++
+		itemNameCounts[itemSymbolName(item)]++
 	}
 
 	// Count name occurrences in symbols
@@ -92,7 +103,7 @@ func matchSymbolsToItems(items []*lsproto.CompletionItem, symbols []*ast.Symbol)
 	result := make([]*ast.Symbol, 0, len(items))
 	si := 0
 	for _, item := range items {
-		name := item.Label
+		name := itemSymbolName(item)
 		if !matchableNames[name] {
 			continue
 		}
