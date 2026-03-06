@@ -658,8 +658,13 @@ func ConvertType(t *checker.Type, ctx *ConvertContext) *collections.OrderedMap[s
 				// Convert BigInt literal value
 				tscType.Set("value", ConvertPseudoBigInt(literalType.Value().(jsnum.PseudoBigInt), ctx))
 			} else {
-				// For other literal types
-				tscType.Set("value", literalType.Value())
+				// For other literal types; skip non-finite numbers as they can't be marshaled to JSON
+				v := literalType.Value()
+				if n, ok := v.(jsnum.Number); ok && (n.IsInf() || n.IsNaN()) {
+					// skip
+				} else {
+					tscType.Set("value", v)
+				}
 			}
 		}
 
