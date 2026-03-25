@@ -34,7 +34,7 @@ type parseTask struct {
 	typeResolutionsTrace         []module.DiagAndArgs
 	resolutionDiagnostics        []*ast.Diagnostic
 	processingDiagnostics        []*processingDiagnostic
-	importHelpersImportSpecifier *ast.Node
+	importHelpersImportSpecifier *ast.StringLiteralNode
 	jsxRuntimeImportSpecifier    *jsxRuntimeImportSpecifier
 
 	increaseDepth bool
@@ -95,9 +95,13 @@ func (t *parseTask) load(loader *fileLoader) {
 	loader.totalFileCount.Add(1)
 	if t.libFile != nil {
 		loader.libFileCount.Add(1)
+		// Default lib files are all scripts; we can safely skip looking up their package.json
+		// to avoid adding spurious lookups to file watcher tracking.
+		t.metadata = ast.SourceFileMetaData{ImpliedNodeFormat: core.ResolutionModeCommonJS}
+	} else {
+		t.metadata = loader.loadSourceFileMetaData(t.normalizedFilePath)
 	}
 
-	t.metadata = loader.loadSourceFileMetaData(t.normalizedFilePath)
 	file := loader.parseSourceFile(t)
 	if file == nil {
 		return
@@ -187,6 +191,26 @@ type filesParser struct {
 	maxDepth       int
 }
 
+var parseTaskDataPool = sync.Pool{
+	New: func() any {
+		return &parseTaskData{
+			tasks: make(map[string]*parseTask, 1),
+		}
+	},
+}
+
+func getParseTaskData(task *parseTask) *parseTaskData {
+	td := parseTaskDataPool.Get().(*parseTaskData)
+	td.tasks[task.normalizedFilePath] = task
+	td.lowestDepth = math.MaxInt
+	return td
+}
+
+func putParseTaskData(td *parseTaskData) {
+	clear(td.tasks)
+	parseTaskDataPool.Put(td)
+}
+
 type parseTaskData struct {
 	// map of tasks by file casing
 	tasks           map[string]*parseTask
@@ -204,10 +228,11 @@ func (w *filesParser) parse(loader *fileLoader, tasks []*parseTask) {
 func (w *filesParser) start(loader *fileLoader, tasks []*parseTask, depth int) {
 	for i, task := range tasks {
 		task.path = loader.toPath(task.normalizedFilePath)
-		data, loaded := w.taskDataByPath.LoadOrStore(task.path, &parseTaskData{
-			tasks:       map[string]*parseTask{task.normalizedFilePath: task},
-			lowestDepth: math.MaxInt,
-		})
+		candidate := getParseTaskData(task)
+		data, loaded := w.taskDataByPath.LoadOrStore(task.path, candidate)
+		if loaded {
+			putParseTaskData(candidate)
+		}
 
 		w.wg.Queue(func() {
 			data.mu.Lock()
@@ -288,16 +313,16 @@ func (w *filesParser) getProcessedFiles(loader *fileLoader) processedFiles {
 	typeResolutionsInFile := make(map[tspath.Path]module.ModeAwareCache[*module.ResolvedTypeReferenceDirective], totalFileCount)
 	sourceFileMetaDatas := make(map[tspath.Path]ast.SourceFileMetaData, totalFileCount)
 	var jsxRuntimeImportSpecifiers map[tspath.Path]*jsxRuntimeImportSpecifier
-	var importHelpersImportSpecifiers map[tspath.Path]*ast.Node
+	var importHelpersImportSpecifiers map[tspath.Path]*ast.StringLiteralNode
 	var sourceFilesFoundSearchingNodeModules collections.Set[tspath.Path]
 	libFilesMap := make(map[tspath.Path]*LibFile, libFileCount)
 
 	var redirectTargetsMap map[tspath.Path][]string
-	var deduplicatedPaths collections.Set[tspath.Path]
-	var packageIdToCanonicalPath map[module.PackageId]tspath.Path
+	var redirectFilesByPath map[tspath.Path]*redirectsFile
+	var packageIdToSourceFile map[module.PackageId]*ast.SourceFile
 	if !loader.opts.Config.CompilerOptions().DeduplicatePackages.IsFalse() {
 		redirectTargetsMap = make(map[tspath.Path][]string)
-		packageIdToCanonicalPath = make(map[module.PackageId]tspath.Path)
+		packageIdToSourceFile = make(map[module.PackageId]*ast.SourceFile)
 	}
 
 	var collectFiles func(tasks []*parseTask, seen map[*parseTaskData]string)
@@ -349,22 +374,31 @@ func (w *filesParser) getProcessedFiles(loader *fileLoader) processedFiles {
 				loader.opts.Host.Trace(trace.Message, trace.Args...)
 			}
 
-			var existingCanonicalPath tspath.Path
-			if packageIdToCanonicalPath != nil && data.packageId.Name != "" {
-				if canonical, exists := packageIdToCanonicalPath[data.packageId]; exists {
-					redirectTargetsMap[canonical] = append(redirectTargetsMap[canonical], task.normalizedFilePath)
-					existingCanonicalPath = canonical
-					deduplicatedPaths.Add(task.path)
-					deduplicatedPaths.Add(canonical)
-				} else {
-					packageIdToCanonicalPath[data.packageId] = task.path
+			file := task.file
+			if packageIdToSourceFile != nil && data.packageId.Name != "" {
+				if packageIdFile, exists := packageIdToSourceFile[data.packageId]; exists {
+					redirectTargetsMap[packageIdFile.Path()] = append(redirectTargetsMap[packageIdFile.Path()], task.normalizedFilePath)
+					if redirectFilesByPath == nil {
+						redirectFilesByPath = make(map[tspath.Path]*redirectsFile, totalFileCount)
+					}
+					redirectFilesByPath[task.path] = &redirectsFile{
+						index:    len(files) + len(redirectFilesByPath),
+						fileName: task.normalizedFilePath,
+						path:     task.path,
+						target:   packageIdFile.Path(),
+					}
+					filesByPath[task.path] = packageIdFile
+					if data.lowestDepth > 0 {
+						sourceFilesFoundSearchingNodeModules.Add(task.path)
+					}
+					continue
+				} else if file != nil {
+					packageIdToSourceFile[data.packageId] = file
 				}
 			}
 
-			if existingCanonicalPath == "" {
-				if subTasks := task.subTasks; len(subTasks) > 0 {
-					collectFiles(subTasks, seen)
-				}
+			if subTasks := task.subTasks; len(subTasks) > 0 {
+				collectFiles(subTasks, seen)
 			}
 
 			// Exclude automatic type directive tasks from include reason processing,
@@ -380,10 +414,6 @@ func (w *filesParser) getProcessedFiles(loader *fileLoader) processedFiles {
 			if task.isForAutomaticTypeDirective {
 				typeResolutionsInFile[task.path] = task.typeResolutionsInFile
 				continue
-			}
-			file := task.file
-			if existingCanonicalPath != "" {
-				file = filesByPath[existingCanonicalPath]
 			}
 
 			path := task.path
@@ -401,7 +431,7 @@ func (w *filesParser) getProcessedFiles(loader *fileLoader) processedFiles {
 			if task.libFile != nil {
 				libFiles = append(libFiles, file)
 				libFilesMap[path] = task.libFile
-			} else if existingCanonicalPath == "" {
+			} else {
 				files = append(files, file)
 			}
 			filesByPath[path] = file
@@ -417,7 +447,7 @@ func (w *filesParser) getProcessedFiles(loader *fileLoader) processedFiles {
 			}
 			if task.importHelpersImportSpecifier != nil {
 				if importHelpersImportSpecifiers == nil {
-					importHelpersImportSpecifiers = make(map[tspath.Path]*ast.Node, totalFileCount)
+					importHelpersImportSpecifiers = make(map[tspath.Path]*ast.StringLiteralNode, totalFileCount)
 				}
 				importHelpersImportSpecifiers[path] = task.importHelpersImportSpecifier
 			}
@@ -431,6 +461,9 @@ func (w *filesParser) getProcessedFiles(loader *fileLoader) processedFiles {
 	loader.sortLibs(libFiles)
 
 	allFiles := append(libFiles, files...)
+	for _, redirectFile := range redirectFilesByPath {
+		redirectFile.index += len(libFiles)
+	}
 
 	keys := slices.Collect(loader.pathForLibFileResolutions.Keys())
 	slices.Sort(keys)
@@ -461,7 +494,7 @@ func (w *filesParser) getProcessedFiles(loader *fileLoader) processedFiles {
 		includeProcessor:                     includeProcessor,
 		outputFileToProjectReferenceSource:   outputFileToProjectReferenceSource,
 		redirectTargetsMap:                   redirectTargetsMap,
-		deduplicatedPaths:                    deduplicatedPaths,
+		redirectFilesByPath:                  redirectFilesByPath,
 	}
 }
 

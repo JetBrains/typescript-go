@@ -39,10 +39,6 @@
         "category": "Message",
         "code": 100009
     },
-    "all, unless --singleThreaded is passed.": {
-        "category": "Message",
-        "code": 100010
-    },
     "Non-relative paths are not allowed. Did you forget a leading './'?": {
         "category": "Error",
         "code": 5090
@@ -66,6 +62,14 @@
     "Project '{0}' is out of date because it has errors.": {
         "category": "Message",
         "code": 6423
+    },
+    "Multiple 'module.exports' assignments cannot be serialized for declaration emit.": {
+        "category": "Error",
+        "code": 6424
+    },
+    "Nested CommonJS export constructs cannot be serialized for declaration emit.": {
+        "category": "Error",
+        "code": 6425
     },
     "Locale must be an IETF BCP 47 language tag. Examples: '{0}', '{1}'.": {
         "category": "Error",

@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-json-experiment/json"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/microsoft/typescript-go/internal/collections"
 	"github.com/microsoft/typescript-go/internal/core"
 	"github.com/microsoft/typescript-go/internal/diagnostics"
 	"github.com/microsoft/typescript-go/internal/diagnosticwriter"
+	"github.com/microsoft/typescript-go/internal/json"
 	"github.com/microsoft/typescript-go/internal/repo"
 	"github.com/microsoft/typescript-go/internal/testutil/baseline"
 	"github.com/microsoft/typescript-go/internal/testutil/filefixture"
@@ -279,7 +279,16 @@ func formatNewBaseline(
 ) string {
 	var formatted strings.Builder
 	formatted.WriteString("Args::\n")
-	formatted.WriteString("[\"" + strings.Join(commandLine, "\", \"") + "\"]")
+	formatted.WriteByte('[')
+	for i, arg := range commandLine {
+		if i > 0 {
+			formatted.WriteString(", ")
+		}
+		formatted.WriteByte('"')
+		formatted.WriteString(arg)
+		formatted.WriteByte('"')
+	}
+	formatted.WriteByte(']')
 	formatted.WriteString("\n\nCompilerOptions::\n")
 	formatted.Write(opts)
 	// todo: watch options not implemented
@@ -393,11 +402,16 @@ func formatNewBaselineBuild(
 ) string {
 	var formatted strings.Builder
 	formatted.WriteString("Args::\n")
-	if len(commandLine) == 0 {
-		formatted.WriteString("[]")
-	} else {
-		formatted.WriteString("[\"" + strings.Join(commandLine, "\", \"") + "\"]")
+	formatted.WriteByte('[')
+	for i, arg := range commandLine {
+		if i > 0 {
+			formatted.WriteString(", ")
+		}
+		formatted.WriteByte('"')
+		formatted.WriteString(arg)
+		formatted.WriteByte('"')
 	}
+	formatted.WriteByte(']')
 	formatted.WriteString("\n\nbuildOptions::\n")
 	formatted.Write(opts)
 	formatted.WriteString("\n\ncompilerOptions::\n")

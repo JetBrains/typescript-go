@@ -8,11 +8,12 @@ import (
 	"github.com/microsoft/typescript-go/internal/tspath"
 )
 
-func (s *Session) OpenProject(ctx context.Context, configFileName string) (*Project, error) {
+func (s *Session) APIOpenProject(ctx context.Context, configFileName string, apiFileChanges FileChangeSummary) (*Project, *Snapshot, error) {
 	s.snapshotUpdateMu.Lock()
 	defer s.snapshotUpdateMu.Unlock()
 
 	fileChanges, overlays, ataChanges, _ := s.flushChanges(ctx)
+	mergeFileChangeSummary(&fileChanges, apiFileChanges)
 	newSnapshot := s.UpdateSnapshot(ctx, overlays, SnapshotChange{
 		fileChanges: fileChanges,
 		ataChanges:  ataChanges,
@@ -22,7 +23,7 @@ func (s *Session) OpenProject(ctx context.Context, configFileName string) (*Proj
 	})
 
 	if newSnapshot.apiError != nil {
-		return nil, newSnapshot.apiError
+		return nil, newSnapshot, newSnapshot.apiError
 	}
 
 	project := newSnapshot.ProjectCollection.ConfiguredProject(s.toPath(configFileName))
@@ -30,7 +31,24 @@ func (s *Session) OpenProject(ctx context.Context, configFileName string) (*Proj
 		panic("OpenProject request returned no error but project not present in snapshot")
 	}
 
-	return project, nil
+	return project, newSnapshot, nil
+}
+
+// APIUpdateWithFileChanges creates a new snapshot incorporating the given file changes.
+func (s *Session) APIUpdateWithFileChanges(ctx context.Context, apiFileChanges FileChangeSummary) *Snapshot {
+	s.snapshotUpdateMu.Lock()
+	defer s.snapshotUpdateMu.Unlock()
+
+	fileChanges, overlays, ataChanges, _ := s.flushChanges(ctx)
+	mergeFileChangeSummary(&fileChanges, apiFileChanges)
+
+	newSnapshot := s.UpdateSnapshot(ctx, overlays, SnapshotChange{
+		apiRequest:  &APISnapshotRequest{},
+		fileChanges: fileChanges,
+		ataChanges:  ataChanges,
+	})
+
+	return newSnapshot
 }
 
 // CloseProject - for JB fork, because flushChanges is private

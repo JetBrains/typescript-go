@@ -10,7 +10,6 @@ import (
 
 	"github.com/microsoft/typescript-go/internal/collections"
 	"github.com/microsoft/typescript-go/internal/core"
-	"github.com/microsoft/typescript-go/internal/format"
 	"github.com/microsoft/typescript-go/internal/ls"
 	"github.com/microsoft/typescript-go/internal/ls/autoimport"
 	"github.com/microsoft/typescript-go/internal/ls/lsconv"
@@ -21,12 +20,13 @@ import (
 	"github.com/microsoft/typescript-go/internal/project/logging"
 	"github.com/microsoft/typescript-go/internal/sourcemap"
 	"github.com/microsoft/typescript-go/internal/tspath"
+	"github.com/microsoft/typescript-go/internal/vfs"
 )
 
 type Snapshot struct {
 	id       uint64
 	parentId uint64
-	refCount atomic.Int32
+	disposed atomic.Bool
 
 	// Session options are immutable for the server lifetime,
 	// so can be a pointer.
@@ -41,7 +41,7 @@ type Snapshot struct {
 	AutoImports                        *autoimport.Registry
 	autoImportsWatch                   *WatchedFiles[map[tspath.Path]string]
 	compilerOptionsForInferredProjects *core.CompilerOptions
-	config                             Config
+	allUserPreferences                 *lsutil.UserConfig
 
 	builderLogs *logging.LogTree
 	apiError    error
@@ -54,11 +54,14 @@ func NewSnapshot(
 	sessionOptions *SessionOptions,
 	configFileRegistry *ConfigFileRegistry,
 	compilerOptionsForInferredProjects *core.CompilerOptions,
-	config Config,
+	allUserPreferences *lsutil.UserConfig,
 	autoImports *autoimport.Registry,
 	autoImportsWatch *WatchedFiles[map[tspath.Path]string],
 	toPath func(fileName string) tspath.Path,
 ) *Snapshot {
+	if allUserPreferences == nil {
+		allUserPreferences = lsutil.NewUserConfig(nil) // disallow nil config
+	}
 	s := &Snapshot{
 		id: id,
 
@@ -69,12 +72,11 @@ func NewSnapshot(
 		ConfigFileRegistry:                 configFileRegistry,
 		ProjectCollection:                  &ProjectCollection{toPath: toPath},
 		compilerOptionsForInferredProjects: compilerOptionsForInferredProjects,
-		config:                             config,
+		allUserPreferences:                 allUserPreferences,
 		AutoImports:                        autoImports,
 		autoImportsWatch:                   autoImportsWatch,
 	}
 	s.converters = lsconv.NewConverters(s.sessionOptions.PositionEncoding, s.LSPLineMap)
-	s.refCount.Store(1)
 	return s
 }
 
@@ -107,15 +109,16 @@ func (s *Snapshot) GetECMALineInfo(fileName string) *sourcemap.ECMALineInfo {
 	return nil
 }
 
-func (s *Snapshot) UserPreferences() *lsutil.UserPreferences {
-	if s.config.tsUserPreferences != nil {
-		return s.config.tsUserPreferences
-	}
-	return lsutil.NewDefaultUserPreferences()
+func (s *Snapshot) GetPreferences(activeFile string) *lsutil.UserPreferences {
+	return s.allUserPreferences.GetPreferences(activeFile)
 }
 
-func (s *Snapshot) FormatOptions() *format.FormatCodeSettings {
-	return s.config.formatOptions
+func (s *Snapshot) UserPreferences() *lsutil.UserPreferences {
+	// returns `ts`
+	if s.allUserPreferences.TS() != nil {
+		return s.allUserPreferences.TS()
+	}
+	return lsutil.NewDefaultUserPreferences()
 }
 
 func (s *Snapshot) Converters() *lsconv.Converters {
@@ -142,10 +145,21 @@ func (s *Snapshot) ReadFile(fileName string) (string, bool) {
 	return handle.Content(), true
 }
 
+func (s *Snapshot) DirectoryExists(path string) bool {
+	return s.fs.fs.DirectoryExists(path)
+}
+
+func (s *Snapshot) GetDirectories(path string) []string {
+	return s.fs.fs.GetAccessibleEntries(path).Directories
+}
+
+func (s *Snapshot) ReadDirectory(currentDir string, path string, extensions []string, excludes []string, includes []string, depth *int) []string {
+	return vfs.ReadDirectory(s.fs.fs, currentDir, path, extensions, excludes, includes, depth)
+}
+
 type APISnapshotRequest struct {
-	OpenProjects   *collections.Set[string]
-	CloseProjects  *collections.Set[tspath.Path]
-	UpdateProjects *collections.Set[tspath.Path]
+	OpenProjects  *collections.Set[string]
+	CloseProjects *collections.Set[tspath.Path]
 }
 
 type ProjectTreeRequest struct {
@@ -171,8 +185,12 @@ func (p *ProjectTreeRequest) Projects() []tspath.Path {
 type ResourceRequest struct {
 	// Documents are URIs that were requested by the client.
 	// The new snapshot should ensure projects for these URIs have loaded programs.
-	// If the requested Documents are not open, ensure that their default project is created
 	Documents []lsproto.DocumentUri
+	// ConfiguredProjectDocuments are URIs for which configured projects should be loaded
+	// (if disableSolutionSearching/disableReferencedProjectLoad settings allow),
+	// but no inferred project should be created if no configured project is found.
+	// This is used by cross-project operations like find-all-references.
+	ConfiguredProjectDocuments []lsproto.DocumentUri
 	// Update requested Projects.
 	// this is used when we want to get LS and from all the Projects the file can be part of
 	Projects []tspath.Path
@@ -193,17 +211,12 @@ type SnapshotChange struct {
 	// It should only be set the value in the next snapshot should be changed. If nil, the
 	// value from the previous snapshot will be copied to the new snapshot.
 	compilerOptionsForInferredProjects *core.CompilerOptions
-	newConfig                          *Config
+	newConfig                          *lsutil.UserConfig
 	// ataChanges contains ATA-related changes to apply to projects in the new snapshot.
 	ataChanges map[tspath.Path]*ATAStateChange
 	apiRequest *APISnapshotRequest
-}
-
-type Config struct {
-	tsUserPreferences *lsutil.UserPreferences
-	// jsUserPreferences *lsutil.UserPreferences
-	formatOptions *format.FormatCodeSettings
-	// tsserverOptions
+	// cleanDiskCache triggers cleaning of cached disk files not referenced by any open project.
+	cleanDiskCache bool
 }
 
 // ATAStateChange represents a change to a project's ATA state.
@@ -238,6 +251,9 @@ func (s *Snapshot) Clone(ctx context.Context, change SnapshotChange, overlays ma
 			if len(change.Documents) != 0 {
 				details += fmt.Sprintf(" Documents: %v", change.Documents)
 			}
+			if len(change.ConfiguredProjectDocuments) != 0 {
+				details += fmt.Sprintf(" ConfiguredProjectDocuments: %v", change.ConfiguredProjectDocuments)
+			}
 			if len(change.Projects) != 0 {
 				details += fmt.Sprintf(" Projects: %v", change.Projects)
 			}
@@ -261,6 +277,8 @@ func (s *Snapshot) Clone(ctx context.Context, change SnapshotChange, overlays ma
 			logger.Logf("Reason: RequestedLanguageService (project dirty) - %v", getDetails())
 		case UpdateReasonRequestedLoadProjectTree:
 			logger.Logf("Reason: RequestedLoadProjectTree - %v", getDetails())
+		case UpdateReasonIdleCleanDiskCache:
+			logger.Logf("Reason: IdleCleanDiskCache")
 		}
 	}
 
@@ -268,7 +286,11 @@ func (s *Snapshot) Clone(ctx context.Context, change SnapshotChange, overlays ma
 	fs := newSnapshotFSBuilder(session.fs.fs, s.fs.overlays, overlays, s.fs.diskFiles, s.fs.diskDirectories, session.options.PositionEncoding, s.toPath)
 	if change.fileChanges.HasExcessiveWatchEvents() {
 		invalidateStart := time.Now()
-		if !fs.watchChangesOverlapCache(change.fileChanges) {
+		if change.fileChanges.InvalidateAll {
+			fs.invalidateCache()
+			logger.Logf("InvalidateAll: invalidated file cache in %v", time.Since(invalidateStart))
+		} else if !fs.watchChangesOverlapCache(change.fileChanges) {
+			// All watch changes/deletes are files we haven't seen; should be irrelevant to us (probably an external tool's build or something)
 			change.fileChanges.Changed = collections.Set[lsproto.DocumentUri]{}
 			change.fileChanges.Deleted = collections.Set[lsproto.DocumentUri]{}
 		} else if change.fileChanges.IncludesWatchChangeOutsideNodeModules {
@@ -279,6 +301,7 @@ func (s *Snapshot) Clone(ctx context.Context, change SnapshotChange, overlays ma
 			logger.Logf("npm install detected, invalidated node_modules cache in %v", time.Since(invalidateStart))
 		}
 	} else {
+		change.fileChanges = fs.expandAndFilterWatchEvents(change.fileChanges)
 		fs.markDirtyFiles(change.fileChanges)
 		change.fileChanges = fs.convertOpenAndCloseToChanges(change.fileChanges)
 	}
@@ -287,6 +310,12 @@ func (s *Snapshot) Clone(ctx context.Context, change SnapshotChange, overlays ma
 	if change.compilerOptionsForInferredProjects != nil {
 		// !!! mark inferred projects as dirty?
 		compilerOptionsForInferredProjects = change.compilerOptionsForInferredProjects
+	}
+
+	// Compute effective customConfigFileName from user preferences
+	customConfigFileName := s.ConfigFileRegistry.customConfigFileName
+	if change.newConfig != nil {
+		customConfigFileName = change.newConfig.TS().CustomConfigFileName
 	}
 
 	newSnapshotID := session.snapshotID.Add(1)
@@ -299,25 +328,32 @@ func (s *Snapshot) Clone(ctx context.Context, change SnapshotChange, overlays ma
 		s.ProjectCollection.apiOpenedProjects,
 		compilerOptionsForInferredProjects,
 		s.sessionOptions,
+		customConfigFileName,
 		session.parseCache,
 		session.extendedConfigCache,
 	)
+
+	if len(change.ataChanges) != 0 {
+		projectCollectionBuilder.DidUpdateATAState(change.ataChanges, logger.Fork("DidUpdateATAState"))
+	}
+
+	projectCollectionBuilder.DidChangeCustomConfigFileName(logger.Fork("DidChangeCustomConfigFileName"))
+
+	if !change.fileChanges.IsEmpty() {
+		projectCollectionBuilder.DidChangeFiles(change.fileChanges, logger.Fork("DidChangeFiles"))
+	}
 
 	var apiError error
 	if change.apiRequest != nil {
 		apiError = projectCollectionBuilder.HandleAPIRequest(change.apiRequest, logger.Fork("HandleAPIRequest"))
 	}
 
-	if len(change.ataChanges) != 0 {
-		projectCollectionBuilder.DidUpdateATAState(change.ataChanges, logger.Fork("DidUpdateATAState"))
-	}
-
-	if !change.fileChanges.IsEmpty() {
-		projectCollectionBuilder.DidChangeFiles(change.fileChanges, logger.Fork("DidChangeFiles"))
-	}
-
 	for _, uri := range change.Documents {
-		projectCollectionBuilder.DidRequestFile(uri, logger.Fork("DidRequestFile"))
+		projectCollectionBuilder.DidRequestFile(uri, false /*configuredProjectsOnly*/, logger.Fork("DidRequestFile"))
+	}
+
+	for _, uri := range change.ConfiguredProjectDocuments {
+		projectCollectionBuilder.DidRequestFile(uri, true /*configuredProjectsOnly*/, logger.Fork("DidRequestFile (optional)"))
 	}
 
 	for _, projectId := range change.Projects {
@@ -337,16 +373,22 @@ func (s *Snapshot) Clone(ctx context.Context, change SnapshotChange, overlays ma
 		}
 	}
 
-	// Clean cached disk files not touched by any open project. It's not important that we do this on
-	// file open specifically, but we don't need to do it on every snapshot clone.
-	if change.fileChanges.Opened != "" || change.fileChanges.Reopened != "" {
+	// Clean cached disk files not touched by any open project on file open, close, delete,
+	// or when explicitly requested (e.g. by an idle timer).
+	shouldCleanDiskCache := change.cleanDiskCache ||
+		change.fileChanges.Opened != "" ||
+		change.fileChanges.Reopened != "" ||
+		change.fileChanges.Closed.Len() > 0 ||
+		change.fileChanges.Deleted.Len() > 0
+	if shouldCleanDiskCache {
 		// The set of seen files can change only if a program was constructed (not cloned) during this snapshot.
-		if len(projectsWithNewProgramStructure) > 0 {
+		// When cleanDiskCache is explicitly set, always attempt cleaning.
+		if len(projectsWithNewProgramStructure) > 0 || change.cleanDiskCache {
 			cleanFilesStart := time.Now()
 			removedFiles := 0
 			fs.diskFiles.Range(func(entry *dirty.SyncMapEntry[tspath.Path, *diskFile]) bool {
 				for _, project := range projectCollection.Projects() {
-					if project.host != nil && project.host.sourceFS.Seen(entry.Key()) {
+					if project.host != nil && project.host.sourceFS.SeenFile(entry.Key()) {
 						return true
 					}
 				}
@@ -355,19 +397,14 @@ func (s *Snapshot) Clone(ctx context.Context, change SnapshotChange, overlays ma
 				return true
 			})
 			if session.options.LoggingEnabled {
-				logger.Logf("Removed %d cached files in %v", removedFiles, time.Since(cleanFilesStart))
+				logger.Logf("Removed %d cached file(s) in %v", removedFiles, time.Since(cleanFilesStart))
 			}
 		}
 	}
 
-	config := s.config
+	config := s.allUserPreferences
 	if change.newConfig != nil {
-		if change.newConfig.tsUserPreferences != nil {
-			config.tsUserPreferences = change.newConfig.tsUserPreferences.CopyOrDefault()
-		}
-		if change.newConfig.formatOptions != nil {
-			config.formatOptions = change.newConfig.formatOptions
-		}
+		config = config.Merge(change.newConfig)
 	}
 
 	autoImportHost := newAutoImportRegistryCloneHost(
@@ -381,13 +418,13 @@ func (s *Snapshot) Clone(ctx context.Context, change SnapshotChange, overlays ma
 	for path, overlay := range overlays {
 		openFiles[path] = overlay.FileName()
 	}
-	oldAutoImports := s.AutoImports
-	if oldAutoImports == nil {
-		oldAutoImports = autoimport.NewRegistry(s.toPath)
-	}
 	prepareAutoImports := tspath.Path("")
 	if change.ResourceRequest.AutoImports != "" {
 		prepareAutoImports = change.ResourceRequest.AutoImports.Path(s.UseCaseSensitiveFileNames())
+	}
+	oldAutoImports := s.AutoImports
+	if oldAutoImports == nil {
+		oldAutoImports = autoimport.NewRegistry(s.toPath, s.allUserPreferences.GetPreferences(string(prepareAutoImports)))
 	}
 	var autoImportsWatch *WatchedFiles[map[tspath.Path]string]
 	autoImports, err := oldAutoImports.Clone(ctx, autoimport.RegistryChange{
@@ -397,7 +434,7 @@ func (s *Snapshot) Clone(ctx context.Context, change SnapshotChange, overlays ma
 		Created:         change.fileChanges.Created,
 		Deleted:         change.fileChanges.Deleted,
 		RebuiltPrograms: projectsWithNewProgramStructure,
-		UserPreferences: config.tsUserPreferences,
+		UserPreferences: config.GetPreferences(string(prepareAutoImports)),
 	}, autoImportHost, logger.Fork("UpdateAutoImports"))
 	if err == nil {
 		autoImportsWatch = s.autoImportsWatch.Clone(autoImports.NodeModulesDirectories())
@@ -422,7 +459,9 @@ func (s *Snapshot) Clone(ctx context.Context, change SnapshotChange, overlays ma
 	newSnapshot.apiError = apiError
 
 	for _, project := range newSnapshot.ProjectCollection.Projects() {
-		session.programCounter.Ref(project.Program)
+		if project.Program != nil {
+			session.programCounter.Ref(project.Program)
+		}
 		if project.ProgramLastUpdate == newSnapshotID {
 			// Only ref source files when the program was created/updated in this snapshot.
 			// This matches dispose, which only derefs when programCounter reaches zero.
@@ -454,16 +493,17 @@ func (s *Snapshot) Clone(ctx context.Context, change SnapshotChange, overlays ma
 		}
 	}
 
+	autoImportHost.Dispose()
+
 	logger.Logf("Finished cloning snapshot %d into snapshot %d in %v", s.id, newSnapshot.id, time.Since(start))
 	return newSnapshot
 }
 
-func (s *Snapshot) Ref() {
-	s.refCount.Add(1)
-}
-
-func (s *Snapshot) Deref() bool {
-	return s.refCount.Add(-1) == 0
+func (s *Snapshot) Dispose(session *Session) {
+	if !s.disposed.CompareAndSwap(false, true) {
+		panic(fmt.Sprintf("snapshot %d: double dispose, parentId=%d", s.id, s.parentId))
+	}
+	s.dispose(session)
 }
 
 func (s *Snapshot) dispose(session *Session) {

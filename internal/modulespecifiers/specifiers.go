@@ -208,6 +208,11 @@ func getAllModulePathsWorker(
 		allFileNames[p.FileName] = p
 	}
 
+	useCaseSensitiveFileNames := info.UseCaseSensitiveFileNames
+	comparePaths := func(a, b ModulePath) int {
+		return comparePathsByRedirect(a, b, useCaseSensitiveFileNames)
+	}
+
 	// Sort by paths closest to importing file Name directory
 	sortedPaths := make([]ModulePath, 0, len(paths))
 	for directory := info.SourceDirectory; len(allFileNames) != 0; {
@@ -220,7 +225,7 @@ func getAllModulePathsWorker(
 			}
 		}
 		if len(pathsInDirectory) > 0 {
-			slices.SortStableFunc(pathsInDirectory, comparePathsByRedirectAndNumberOfDirectorySeparators)
+			slices.SortFunc(pathsInDirectory, comparePaths)
 			sortedPaths = append(sortedPaths, pathsInDirectory...)
 		}
 		newDirectory := tspath.GetDirectoryPath(directory)
@@ -231,7 +236,7 @@ func getAllModulePathsWorker(
 	}
 	if len(allFileNames) > 0 {
 		remainingPaths := slices.Collect(maps.Values(allFileNames))
-		slices.SortStableFunc(remainingPaths, comparePathsByRedirectAndNumberOfDirectorySeparators)
+		slices.SortFunc(remainingPaths, comparePaths)
 		sortedPaths = append(sortedPaths, remainingPaths...)
 	}
 	return sortedPaths
@@ -841,7 +846,7 @@ func tryDirectoryWithPackageJson(
 	}
 
 	packageJsonContent := packageJson.GetContents()
-	if options.GetResolvePackageJsonImports() {
+	if options.GetResolvePackageJsonExports() {
 		// The package name that we found in node_modules could be different from the package
 		// name in the package.json content via url/filepath dependency specifiers. We need to
 		// use the actual directory name, so don't look at `packageJsonContent.name` here.
@@ -1026,8 +1031,11 @@ func tryGetModuleNameFromPackageJsonImports(
 		top := imports.AsObject()
 		entries := top.Entries()
 		for k, value := range entries {
-			if !strings.HasPrefix(k, "#") || k == "#" || strings.HasPrefix(k, "#/") {
+			if k == "#" || k == "#/" || !strings.HasPrefix(k, "#") {
 				continue // invalid imports entry
+			}
+			if strings.HasPrefix(k, "#/") && options.GetModuleResolutionKind() != core.ModuleResolutionKindNodeNext && options.GetModuleResolutionKind() != core.ModuleResolutionKindBundler {
+				continue // "#/" imports keys are only valid in nodenext/bundler
 			}
 			mode := MatchingModeExact
 			if strings.HasSuffix(k, "/") {
@@ -1077,7 +1085,7 @@ func tryGetModuleNameFromPaths(
 			if len(pattern) == 0 {
 				pattern = normalized
 			}
-			indexOfStar := strings.Index(pattern, "*")
+			prefix, suffix, ok := strings.Cut(pattern, "*")
 
 			// In module resolution, if `pattern` itself has an extension, a file with that extension is looked up directly,
 			// meaning a '.ts' or '.d.ts' extension is allowed to resolve. This is distinct from the case where a '*' substitution
@@ -1136,9 +1144,7 @@ func tryGetModuleNameFromPaths(
 				})
 			}
 
-			if indexOfStar != -1 {
-				prefix := pattern[0:indexOfStar]
-				suffix := pattern[indexOfStar+1:]
+			if ok {
 				for _, c := range candidates {
 					value := c.value
 					if len(value) >= len(prefix)+len(suffix) &&

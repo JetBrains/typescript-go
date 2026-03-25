@@ -50,6 +50,24 @@ type fileLoader struct {
 	pathForLibFileResolutions collections.SyncMap[tspath.Path, *libResolution]
 }
 
+type redirectsFile struct {
+	// Index of file at which this redirect file needs to be iterated
+	index    int
+	fileName string
+	path     tspath.Path
+	target   tspath.Path
+}
+
+var _ ast.HasFileName = (*redirectsFile)(nil)
+
+func (r *redirectsFile) FileName() string {
+	return r.fileName
+}
+
+func (r *redirectsFile) Path() tspath.Path {
+	return r.path
+}
+
 type processedFiles struct {
 	resolver                      *module.Resolver
 	files                         []*ast.SourceFile
@@ -60,7 +78,7 @@ type processedFiles struct {
 	typeResolutionsInFile         map[tspath.Path]module.ModeAwareCache[*module.ResolvedTypeReferenceDirective]
 	sourceFileMetaDatas           map[tspath.Path]ast.SourceFileMetaData
 	jsxRuntimeImportSpecifiers    map[tspath.Path]*jsxRuntimeImportSpecifier
-	importHelpersImportSpecifiers map[tspath.Path]*ast.Node
+	importHelpersImportSpecifiers map[tspath.Path]*ast.StringLiteralNode
 	libFiles                      map[tspath.Path]*LibFile
 	// List of present unsupported extensions
 	sourceFilesFoundSearchingNodeModules collections.Set[tspath.Path]
@@ -70,14 +88,14 @@ type processedFiles struct {
 	outputFileToProjectReferenceSource map[tspath.Path]string
 	// Key is a file path. Value is the list of files that redirect to it (same package, different install location)
 	redirectTargetsMap map[tspath.Path][]string
-	// Any paths involved in deduplication, including canonical paths and redirected paths
-	deduplicatedPaths  collections.Set[tspath.Path]
-	finishedProcessing bool
+	// filesByPath for redirect files
+	redirectFilesByPath map[tspath.Path]*redirectsFile
+	finishedProcessing  bool
 }
 
 type jsxRuntimeImportSpecifier struct {
 	moduleReference string
-	specifier       *ast.Node
+	specifier       *ast.StringLiteralNode
 }
 
 func processAllProgramFiles(
@@ -248,7 +266,7 @@ func (p *fileLoader) getDefaultLibFilePriority(a *ast.SourceFile) int {
 }
 
 func (p *fileLoader) loadSourceFileMetaData(fileName string) ast.SourceFileMetaData {
-	packageJsonScope := p.resolver.GetPackageScopeForPath(fileName)
+	packageJsonScope := p.resolver.GetPackageScopeForPath(tspath.GetDirectoryPath(fileName))
 	moduleResolutionKind := p.opts.Config.CompilerOptions().GetModuleResolutionKind()
 
 	var packageJsonType, packageJsonDirectory string
@@ -276,9 +294,7 @@ func (p *fileLoader) parseSourceFile(t *parseTask) *ast.SourceFile {
 	sourceFile := p.opts.Host.GetSourceFile(ast.SourceFileParseOptions{
 		FileName:                       t.normalizedFilePath,
 		Path:                           path,
-		CompilerOptions:                ast.GetSourceFileAffectingCompilerOptions(t.normalizedFilePath, options),
 		ExternalModuleIndicatorOptions: ast.GetExternalModuleIndicatorOptions(t.normalizedFilePath, options, t.metadata),
-		JSDocParsingMode:               p.opts.JSDocParsingMode,
 	})
 	return sourceFile
 }
@@ -448,16 +464,13 @@ func (p *fileLoader) resolveImportsAndModuleAugmentations(t *parseTask) {
 	}
 }
 
-func (p *fileLoader) createSyntheticImport(text string, file *ast.SourceFile) *ast.Node {
+func (p *fileLoader) createSyntheticImport(text string, file *ast.SourceFile) *ast.StringLiteralNode {
 	p.factoryMu.Lock()
 	defer p.factoryMu.Unlock()
 	externalHelpersModuleReference := p.factory.NewStringLiteral(text, ast.TokenFlagsNone)
 	importDecl := p.factory.NewImportDeclaration(nil, nil, externalHelpersModuleReference, nil)
-	// !!! addInternalEmitFlags(importDecl, InternalEmitFlags.NeverApplyImportHelper);
 	externalHelpersModuleReference.Parent = importDecl
 	importDecl.Parent = file.AsNode()
-	// !!! externalHelpersModuleReference.Flags &^= ast.NodeFlagsSynthesized
-	// !!! importDecl.Flags &^= ast.NodeFlagsSynthesized
 	return externalHelpersModuleReference
 }
 

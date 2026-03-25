@@ -26,9 +26,9 @@ var (
 	regexPatternCache   = make(map[regexPatternCacheKey]*regexp2.Regexp)
 )
 
-func comparePathsByRedirectAndNumberOfDirectorySeparators(a ModulePath, b ModulePath) int {
+func comparePathsByRedirect(a ModulePath, b ModulePath, useCaseSensitiveFileNames bool) int {
 	if a.IsRedirect == b.IsRedirect {
-		return strings.Count(a.FileName, "/") - strings.Count(b.FileName, "/")
+		return tspath.ComparePaths(a.FileName, b.FileName, tspath.ComparePathsOptions{UseCaseSensitiveFileNames: useCaseSensitiveFileNames})
 	}
 	if a.IsRedirect {
 		return 1
@@ -352,6 +352,10 @@ func GetPackageNameFromDirectory(fileOrDirectoryPath string) string {
 	}
 
 	basename := fileOrDirectoryPath[idx+len("/node_modules/"):]
+	if basename[0] == '.' {
+		return ""
+	}
+
 	nextSlash := strings.Index(basename, "/")
 	if nextSlash == -1 {
 		return basename
