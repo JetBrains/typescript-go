@@ -24,6 +24,7 @@ import (
 	"github.com/microsoft/typescript-go/internal/astnav"
 	"github.com/microsoft/typescript-go/internal/checker"
 	"github.com/microsoft/typescript-go/internal/collections"
+	"github.com/microsoft/typescript-go/internal/core"
 	"github.com/microsoft/typescript-go/internal/jsnum"
 	"github.com/microsoft/typescript-go/internal/ls"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
@@ -163,8 +164,8 @@ func IdeGetTypeOfElement(
 		return nil, nil
 	}
 
-	startOffset := scanner.GetECMAPositionOfLineAndCharacter(sourceFile, int(Range.Start.Line), int(Range.Start.Character))
-	endOffset := scanner.GetECMAPositionOfLineAndCharacter(sourceFile, int(Range.End.Line), int(Range.End.Character))
+	startOffset := scanner.GetECMAPositionOfLineAndUTF16Character(sourceFile, int(Range.Start.Line), core.UTF16Offset(Range.Start.Character))
+	endOffset := scanner.GetECMAPositionOfLineAndUTF16Character(sourceFile, int(Range.End.Line), core.UTF16Offset(Range.End.Character))
 
 	node := astnav.GetTokenAtPosition(sourceFile, startOffset).AsNode()
 	for node != nil && node.End() < endOffset {
@@ -386,9 +387,9 @@ func IdeGetCompletionWithSymbols(
 		return nil, nil
 	}
 
-	positionOffset := scanner.GetECMAPositionOfLineAndCharacter(sourceFile, int(position.Line), int(position.Character))
+	positionOffset := scanner.GetECMAPositionOfLineAndUTF16Character(sourceFile, int(position.Line), core.UTF16Offset(position.Character))
 
-	languageService := ls.NewLanguageService(proj.ConfigFilePath(), program, snapshot)
+	languageService := ls.NewLanguageService(proj.ConfigFilePath(), program, snapshot, fileName)
 
 	typeCheckerForData, doneForData := languageService.GetProgram().GetTypeCheckerForFile(ctx, sourceFile)
 	defer doneForData()
@@ -464,8 +465,8 @@ func GetResolvedSignature(
 		return nil, nil
 	}
 
-	startOffset := scanner.GetECMAPositionOfLineAndCharacter(sourceFile, int(Range.Start.Line), int(Range.Start.Character))
-	endOffset := scanner.GetECMAPositionOfLineAndCharacter(sourceFile, int(Range.End.Line), int(Range.End.Character))
+	startOffset := scanner.GetECMAPositionOfLineAndUTF16Character(sourceFile, int(Range.Start.Line), core.UTF16Offset(Range.Start.Character))
+	endOffset := scanner.GetECMAPositionOfLineAndUTF16Character(sourceFile, int(Range.End.Line), core.UTF16Offset(Range.End.Character))
 
 	typeChecker, done := program.GetTypeCheckerForFile(ctx, sourceFile)
 	defer done()
@@ -755,8 +756,8 @@ func ConvertNode(node *ast.Node, ctx *ConvertContext) *collections.OrderedMap[st
 			// Add range information
 			if sourceFileParent != nil {
 				sourceFile := sourceFileParent.AsSourceFile()
-				startLine, startChar := scanner.GetECMALineAndCharacterOfPosition(sourceFile, node.Pos())
-				endLine, endChar := scanner.GetECMALineAndCharacterOfPosition(sourceFile, node.End())
+				startLine, startChar := scanner.GetECMALineAndUTF16CharacterOfPosition(sourceFile, node.Pos())
+				endLine, endChar := scanner.GetECMALineAndUTF16CharacterOfPosition(sourceFile, node.End())
 				result.Set("range", &lsproto.Range{
 					Start: lsproto.Position{Line: uint32(startLine), Character: uint32(startChar)},
 					End:   lsproto.Position{Line: uint32(endLine), Character: uint32(endChar)},

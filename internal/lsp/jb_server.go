@@ -13,6 +13,7 @@ import (
 	"runtime/debug"
 
 	"github.com/microsoft/typescript-go/internal/collections"
+	"github.com/microsoft/typescript-go/internal/jsonrpc"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/project"
 )
@@ -94,14 +95,12 @@ func (s *Server) jbHandleCustomTsServerCommand(ctx context.Context, req *lsproto
 				return nil
 			}
 
-			snapshot, release := s.session.Snapshot()
-			defer release()
+			snapshot := s.session.Snapshot()
 			result, err := IdeGetCompletionWithSymbols(ctx, proj, snapshot, file, args.Position)
 			s.jbSendResult(req.ID, result, err)
 		}
 	}
-	snapshot, release := s.session.Snapshot()
-	defer release()
+	snapshot := s.session.Snapshot()
 
 	CleanupProjectsCache(append(snapshot.ProjectCollection.Projects(), GetAllSelfManagedProjects(s, ctx)...), s.logger)
 	return nil
@@ -114,15 +113,7 @@ func (s *Server) GetProjectAndFileName(
 ) (*project.Project, string, error) {
 	file := fileUri.FileName()
 
-	snapshot, release := s.session.Snapshot()
-	released := false
-	releaseOnce := func() {
-		if !released {
-			release()
-			released = true
-		}
-	}
-	defer releaseOnce()
+	snapshot := s.session.Snapshot()
 
 	if projectFileNameUri != nil {
 		projectFileName := projectFileNameUri.FileName()
@@ -148,12 +139,9 @@ func (s *Server) GetProjectAndFileName(
 		return p, file, nil
 	}
 
-	releaseOnce()
-
 	if _, err := s.session.GetLanguageService(ctx, fileUri); err == nil {
 		// Get a fresh snapshot since GetLanguageService may have updated it
-		newSnapshot, release := s.session.Snapshot()
-		defer release()
+		newSnapshot := s.session.Snapshot()
 		if p := newSnapshot.GetDefaultProject(fileUri); p != nil {
 			return p, file, nil
 		}
@@ -185,7 +173,7 @@ func (s *Server) GetProjectAndFileName(
 	*/
 }
 
-func (s *Server) jbSendResult(id *lsproto.ID, result *collections.OrderedMap[string, interface{}], err error) {
+func (s *Server) jbSendResult(id *jsonrpc.ID, result *collections.OrderedMap[string, interface{}], err error) {
 	response := make(map[string]interface{})
 	if err == nil {
 		response["response"] = result

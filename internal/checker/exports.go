@@ -264,14 +264,6 @@ func (c *Checker) GetRestTypeOfSignature(sig *Signature) *Type {
 	return c.getRestTypeOfSignature(sig)
 }
 
-func (c *Checker) GetTypeArguments(t *Type) []*Type {
-	return c.getTypeArguments(t)
-}
-
-func (c *Checker) GetIndexInfosOfType(t *Type) []*IndexInfo {
-	return c.getIndexInfosOfType(t)
-}
-
 func (c *Checker) IsContextSensitive(node *ast.Node) bool {
 	return c.isContextSensitive(node)
 }

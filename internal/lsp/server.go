@@ -603,7 +603,7 @@ func (s *Server) handleRequestOrNotification(ctx context.Context, req *lsproto.R
 
 	switch req.Params.(type) {
 	case *lsproto.JbHandleCustomTsServerCommandParams:
-		return s.jbHandleCustomTsServerCommand(ctx, req)
+		return nil, s.jbHandleCustomTsServerCommand(ctx, req)
 	}
 
 	if handler := handlers()[req.Method]; handler != nil {

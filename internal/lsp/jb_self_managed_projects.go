@@ -109,7 +109,7 @@ func createNewSelfManagedProject(s *Server, projectFileName string, file string,
 	var p *project.Project
 	var err error
 
-	if p, err = s.session.OpenProject(ctx, projectFileName); err == nil && p != nil {
+	if p, _, err = s.session.APIOpenProject(ctx, projectFileName, project.FileChangeSummary{}); err == nil && p != nil {
 		if p.GetProgram() != nil && p.GetProgram().GetSourceFile(file) != nil {
 			return p
 		}
