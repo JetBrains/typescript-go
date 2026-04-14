@@ -756,8 +756,10 @@ func ConvertNode(node *ast.Node, ctx *ConvertContext) *collections.OrderedMap[st
 			// Add range information
 			if sourceFileParent != nil {
 				sourceFile := sourceFileParent.AsSourceFile()
-				startLine, startChar := scanner.GetECMALineAndUTF16CharacterOfPosition(sourceFile, node.Pos())
-				endLine, endChar := scanner.GetECMALineAndUTF16CharacterOfPosition(sourceFile, node.End())
+				startPos := scanner.GetTokenPosOfNode(node, sourceFile, false)
+				endPos := node.End()
+				startLine, startChar := scanner.GetECMALineAndUTF16CharacterOfPosition(sourceFile, startPos)
+				endLine, endChar := scanner.GetECMALineAndUTF16CharacterOfPosition(sourceFile, endPos)
 				result.Set("range", &lsproto.Range{
 					Start: lsproto.Position{Line: uint32(startLine), Character: uint32(startChar)},
 					End:   lsproto.Position{Line: uint32(endLine), Character: uint32(endChar)},
