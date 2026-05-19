@@ -113,6 +113,8 @@ func createNewSelfManagedProject(s *Server, projectFileName string, file string,
 		if p.GetProgram() != nil && p.GetProgram().GetSourceFile(file) != nil {
 			return p
 		}
+	} else if err != nil {
+		s.logger.Logf("SelfManagedProjects:: Error opening project %s: %v", projectFileName, err)
 	}
 
 	return nil

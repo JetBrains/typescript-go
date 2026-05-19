@@ -10,6 +10,7 @@ package lsp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"runtime/debug"
 
 	"github.com/microsoft/typescript-go/internal/collections"
@@ -111,12 +112,18 @@ func (s *Server) GetProjectAndFileName(
 	fileUri lsproto.DocumentUri,
 	ctx context.Context,
 ) (*project.Project, string, error) {
-	file := fileUri.FileName()
+	file, err := documentURIFileName(fileUri)
+	if err != nil {
+		return nil, "", err
+	}
 
 	snapshot := s.session.Snapshot()
 
 	if projectFileNameUri != nil {
-		projectFileName := projectFileNameUri.FileName()
+		projectFileName, err := documentURIFileName(*projectFileNameUri)
+		if err != nil {
+			return nil, file, fmt.Errorf("invalid projectFileName: %w", err)
+		}
 
 		if IsSelfManagedProject(projectFileName) {
 			if p := GetOrCreateSelfManagedProjectForFile(s, projectFileName, file, ctx); p != nil {
@@ -130,8 +137,10 @@ func (s *Server) GetProjectAndFileName(
 			}
 		}
 
-		if p := GetOrCreateSelfManagedProjectForFile(s, projectFileName, file, ctx); p != nil {
-			return p, file, nil
+		if canOpenSelfManagedProject(s, projectFileName) {
+			if p := GetOrCreateSelfManagedProjectForFile(s, projectFileName, file, ctx); p != nil {
+				return p, file, nil
+			}
 		}
 	}
 
@@ -171,6 +180,25 @@ func (s *Server) GetProjectAndFileName(
 
 		return proj, file
 	*/
+}
+
+func documentURIFileName(uri lsproto.DocumentUri) (fileName string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("invalid URI %q: %v", uri, r)
+		}
+	}()
+
+	return uri.FileName(), nil
+}
+
+func canOpenSelfManagedProject(s *Server, projectFileName string) bool {
+	if s.fs.FileExists(projectFileName) {
+		return true
+	}
+
+	s.logger.Logf("SelfManagedProjects:: Skipping project %s because the project file does not exist", projectFileName)
+	return false
 }
 
 func (s *Server) jbSendResult(id *jsonrpc.ID, result *collections.OrderedMap[string, interface{}], err error) {
