@@ -2,6 +2,7 @@ package ls
 
 import (
 	"context"
+	"strings"
 
 	"github.com/microsoft/typescript-go/internal/ast"
 	"github.com/microsoft/typescript-go/internal/checker"
@@ -64,13 +65,9 @@ func (ls *LanguageService) GetCompletionInfoWithSymbols(
 
 // itemSymbolName returns the original symbol name from a CompletionItem.
 // CompletionItem.Label may have a trailing '?' for optional properties
-// (added in createLSPCompletionItem), so we use FilterText when available
-// (it preserves the original name), otherwise strip the '?' suffix.
+// (added in createLSPCompletionItem), so strip the '?' suffix.
 func itemSymbolName(item *lsproto.CompletionItem) string {
-	if item.FilterText != nil {
-		return *item.FilterText
-	}
-	return item.Label
+	return strings.TrimSuffix(item.Label, "?")
 }
 
 // matchSymbolsToItems filters symbols to match items by index.
