@@ -118,6 +118,9 @@ func (s *Server) GetProjectAndFileName(
 	}
 
 	snapshot := s.session.Snapshot()
+	if _, updatedSnapshot, err := s.session.GetLanguageServiceAndSnapshot(ctx, fileUri); err == nil {
+		snapshot = updatedSnapshot
+	}
 
 	if projectFileNameUri != nil {
 		projectFileName, err := documentURIFileName(*projectFileNameUri)
