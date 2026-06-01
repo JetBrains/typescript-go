@@ -117,13 +117,9 @@ func (s *Server) GetProjectAndFileName(
 		return nil, "", err
 	}
 
-	snapshot := s.session.Snapshot()
-	if _, updatedSnapshot, err := s.session.GetLanguageServiceAndSnapshot(ctx, fileUri); err == nil {
-		snapshot = updatedSnapshot
-	}
-
+	var projectFileName string
 	if projectFileNameUri != nil {
-		projectFileName, err := documentURIFileName(*projectFileNameUri)
+		projectFileName, err = documentURIFileName(*projectFileNameUri)
 		if err != nil {
 			return nil, file, fmt.Errorf("invalid projectFileName: %w", err)
 		}
@@ -133,7 +129,20 @@ func (s *Server) GetProjectAndFileName(
 				return p, file, nil
 			}
 		}
+	}
 
+	_, snapshot, err := s.session.GetLanguageServiceAndSnapshot(ctx, fileUri)
+	if err != nil {
+		if projectFileNameUri != nil && canOpenSelfManagedProject(s, projectFileName) {
+			if p := GetOrCreateSelfManagedProjectForFile(s, projectFileName, file, ctx); p != nil {
+				return p, file, nil
+			}
+		}
+
+		return nil, file, ProjectNotFoundError
+	}
+
+	if projectFileNameUri != nil {
 		for _, p := range snapshot.ProjectCollection.Projects() {
 			if p.Name() == projectFileName && p.GetProgram().GetSourceFile(file) != nil {
 				return p, file, nil
@@ -149,14 +158,6 @@ func (s *Server) GetProjectAndFileName(
 
 	if p := snapshot.GetDefaultProject(fileUri); p != nil {
 		return p, file, nil
-	}
-
-	if _, err := s.session.GetLanguageService(ctx, fileUri); err == nil {
-		// Get a fresh snapshot since GetLanguageService may have updated it
-		newSnapshot := s.session.Snapshot()
-		if p := newSnapshot.GetDefaultProject(fileUri); p != nil {
-			return p, file, nil
-		}
 	}
 
 	// No project found
