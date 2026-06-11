@@ -8,9 +8,9 @@ import url from "node:url"
 import type { Range } from 'vscode-languageserver-types'
 import type { Type, Symbol, Node, TypeReference, GenericType, UnionType, LiteralType, IndexType, IndexedAccessType, ConditionalType, SubstitutionType, ObjectType, PseudoBigInt, BigIntLiteralType, TemplateLiteral, TemplateLiteralType, TupleType, Signature, IndexInfo, __String, Declaration, SignatureDeclaration, SourceFile, LineAndCharacter, IndexSignatureDeclaration, server } from 'typescript'
 // @ts-expect-error
-import { TypeFlags } from '../src/typeFlags.ts'
+import { TypeFlags } from '../src/enums/typeFlags.ts'
 // @ts-expect-error
-import { SymbolFlags } from '../src/symbolFlags.ts'
+import { SymbolFlags } from '../src/enums/symbolFlags.ts'
 
 
 suite("TypeScriptGoServiceGetElementTypeTest", {}, () => {
