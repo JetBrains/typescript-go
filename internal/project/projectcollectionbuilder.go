@@ -9,6 +9,7 @@ import (
 
 	"github.com/microsoft/typescript-go/internal/collections"
 	"github.com/microsoft/typescript-go/internal/core"
+	"github.com/microsoft/typescript-go/internal/diagnostics"
 	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/project/dirty"
 	"github.com/microsoft/typescript-go/internal/project/logging"
@@ -37,9 +38,12 @@ type ProjectCollectionBuilder struct {
 	compilerOptionsForInferredProjects *core.CompilerOptions
 	configFileRegistryBuilder          *configFileRegistryBuilder
 
+	client Client // optional; used for project loading notifications
+
 	newSnapshotID              uint64
 	programStructureChanged    bool
 	defaultProjectsInvalidated bool
+	openFilesChanged           bool
 
 	fileDefaultProjects map[tspath.Path]tspath.Path
 	configuredProjects  *dirty.SyncMap[tspath.Path, *Project]
@@ -60,6 +64,7 @@ func newProjectCollectionBuilder(
 	customConfigFileName string,
 	parseCache *ParseCache,
 	extendedConfigCache *ExtendedConfigCache,
+	client Client,
 ) *ProjectCollectionBuilder {
 	return &ProjectCollectionBuilder{
 		ctx:                                ctx,
@@ -70,11 +75,12 @@ func newProjectCollectionBuilder(
 		parseCache:                         parseCache,
 		extendedConfigCache:                extendedConfigCache,
 		base:                               oldProjectCollection,
-		configFileRegistryBuilder:          newConfigFileRegistryBuilder(fs, oldConfigFileRegistry, extendedConfigCache, sessionOptions, customConfigFileName, nil),
+		configFileRegistryBuilder:          newConfigFileRegistryBuilder(lsproto.GetClientCapabilities(ctx).Workspace.DidChangeWatchedFiles.RelativePatternSupport, fs, oldConfigFileRegistry, extendedConfigCache, newSnapshotID, sessionOptions, customConfigFileName, nil),
 		newSnapshotID:                      newSnapshotID,
 		configuredProjects:                 dirty.NewSyncMap(oldProjectCollection.configuredProjects),
 		inferredProject:                    dirty.NewBox(oldProjectCollection.inferredProject),
 		apiOpenedProjects:                  maps.Clone(oldAPIOpenedProjects),
+		client:                             client,
 	}
 }
 
@@ -91,6 +97,11 @@ func (b *ProjectCollectionBuilder) Finalize(logger *logging.LogTree) (*ProjectCo
 	if configuredProjects, configuredProjectsChanged := b.configuredProjects.Finalize(); configuredProjectsChanged {
 		ensureCloned()
 		newProjectCollection.configuredProjects = configuredProjects
+	}
+
+	if b.openFilesChanged {
+		ensureCloned()
+		newProjectCollection.openFiles = openFilePaths(b.fs.overlays)
 	}
 
 	if !maps.Equal(b.fileDefaultProjects, b.base.fileDefaultProjects) {
@@ -178,6 +189,8 @@ func (b *ProjectCollectionBuilder) HandleAPIRequest(apiRequest *APISnapshotReque
 }
 
 func (b *ProjectCollectionBuilder) DidChangeFiles(summary FileChangeSummary, logger *logging.LogTree) {
+	b.openFilesChanged = b.openFilesChanged || summary.Opened != "" || summary.Closed.Len() > 0
+
 	changedFiles := make([]tspath.Path, 0, summary.Changed.Len())
 	for uri := range summary.Changed.Keys() {
 		fileName := uri.FileName()
@@ -514,12 +527,16 @@ func (b *ProjectCollectionBuilder) ensureProjectTree(
 		return
 	}
 	for _, childConfig := range children {
+		if childConfig == nil {
+			continue
+		}
 		wg.Queue(func() {
 			if !projectTreeRequest.IsAllProjects() && program.RangeResolvedProjectReferenceInChildConfig(
 				childConfig,
 				func(referencePath tspath.Path, config *tsoptions.ParsedCommandLine, _ *tsoptions.ParsedCommandLine, _ int) bool {
 					return !projectTreeRequest.IsProjectReferenced(referencePath)
-				}) {
+				},
+			) {
 				return
 			}
 
@@ -978,10 +995,7 @@ func (b *ProjectCollectionBuilder) updateInferredProjectRoots(rootFileNames []st
 				if logger != nil {
 					logger.Log(fmt.Sprintf("Updating inferred project config with %d root files", len(rootFileNames)))
 				}
-				p.CommandLine = newCommandLine
-				p.commandLineWithTypingsFiles = nil
-				p.dirty = true
-				p.dirtyFilePath = ""
+				p.SetCommandLine(newCommandLine)
 			},
 		)
 		if !changed {
@@ -995,9 +1009,12 @@ func (b *ProjectCollectionBuilder) updateInferredProjectRoots(rootFileNames []st
 // a boolean indicating whether the update could have caused any structure-affecting changes.
 func (b *ProjectCollectionBuilder) updateProgram(entry dirty.Value[*Project], logger *logging.LogTree) bool {
 	var updateProgram bool
+	var deleteProject bool
 	var filesChanged bool
 	configFileName := entry.Value().configFileName
 	startTime := time.Now()
+	var notifiedLoading bool
+	var displayName string
 	entry.Locked(func(entry dirty.Value[*Project]) {
 		if entry.Value().Kind == KindConfigured {
 			commandLine := b.configFileRegistryBuilder.acquireConfigForProject(
@@ -1006,17 +1023,15 @@ func (b *ProjectCollectionBuilder) updateProgram(entry dirty.Value[*Project], lo
 				entry.Value(),
 				logger.Fork("Acquiring config for project"),
 			)
+			if commandLine == nil {
+				deleteProject = true
+				filesChanged = true
+				return
+			}
 			if entry.Value().CommandLine != commandLine {
 				updateProgram = true
-				if commandLine == nil {
-					b.deleteConfiguredProject(entry, logger)
-					filesChanged = true
-					return
-				}
 				entry.Change(func(p *Project) {
-					p.CommandLine = commandLine
-					p.commandLineWithTypingsFiles = nil
-					p.potentialProjectReferences = nil
+					p.SetCommandLine(commandLine)
 				})
 			}
 		}
@@ -1024,6 +1039,20 @@ func (b *ProjectCollectionBuilder) updateProgram(entry dirty.Value[*Project], lo
 			updateProgram = entry.Value().dirty
 		}
 		if updateProgram {
+			if b.client != nil {
+				displayName = entry.Value().DisplayName(b.sessionOptions.CurrentDirectory)
+				notifiedLoading = true
+			}
+		}
+	})
+	if notifiedLoading && b.client != nil {
+		b.client.ProgressStart(diagnostics.Project_0, displayName)
+	}
+	if deleteProject {
+		b.deleteConfiguredProject(entry, logger)
+	}
+	if updateProgram {
+		entry.Locked(func(entry dirty.Value[*Project]) {
 			entry.Change(func(project *Project) {
 				oldHost := project.host
 				project.host = newCompilerHost(project.currentDirectory, project, b, logger.Fork("CompilerHost"))
@@ -1042,8 +1071,11 @@ func (b *ProjectCollectionBuilder) updateProgram(entry dirty.Value[*Project], lo
 				project.dirty = false
 				project.dirtyFilePath = ""
 			})
-		}
-	})
+		})
+	}
+	if notifiedLoading && b.client != nil {
+		b.client.ProgressFinish(diagnostics.Project_0, displayName)
+	}
 	if updateProgram && logger != nil {
 		elapsed := time.Since(startTime)
 		logger.Log(fmt.Sprintf("Program update for %s completed in %v", configFileName, elapsed))
@@ -1065,6 +1097,13 @@ func (b *ProjectCollectionBuilder) markFilesChanged(entry dirty.Value[*Project],
 				if p.containsFile(path) {
 					dirty = true
 					if changeType == lsproto.FileChangeTypeDeleted {
+						dirtyFilePath = ""
+						break
+					}
+					// package.json changes can affect module resolution and package
+					// identity (e.g. dedup decisions), so they must always trigger
+					// a full rebuild rather than a single-file clone.
+					if tspath.GetBaseFileName(string(path)) == "package.json" {
 						dirtyFilePath = ""
 						break
 					}

@@ -136,6 +136,11 @@ func (tx *asyncTransformer) visit(node *ast.Node) *ast.Node {
 	cleanup := tx.descendInto(node)
 	defer cleanup()
 
+	if tx.EmitContext().EmitFlags(node)&printer.EFNoLexicalThis != 0 && tx.inHasLexicalThisContext() {
+		tx.setContextFlag(asyncContextHasLexicalThis, false)
+		defer tx.setContextFlag(asyncContextHasLexicalThis, true)
+	}
+
 	if node.SubtreeFacts()&(ast.SubtreeContainsAnyAwait|ast.SubtreeContainsAwait) == 0 {
 		return tx.fallbackVisitor(node)
 	}
@@ -638,12 +643,12 @@ func (tx *asyncTransformer) transformMethodBody(node *ast.Node) *ast.Node {
 	}
 
 	mergedStatements := tx.EmitContext().EndAndMergeVariableEnvironmentList(updated.StatementList())
-	if emitSuperHelpers && tx.hasSuperElementAccess && !updated.AsBlock().Multiline {
+	if emitSuperHelpers && tx.hasSuperElementAccess && !updated.AsBlock().MultiLine {
 		newBlock := tx.Factory().NewBlock(mergedStatements, true)
 		newBlock.Loc = updated.Loc
 		updated = newBlock
 	} else {
-		updated = tx.Factory().UpdateBlock(updated.AsBlock(), mergedStatements)
+		updated = tx.Factory().UpdateBlock(updated.AsBlock(), mergedStatements, updated.AsBlock().MultiLine)
 	}
 
 	if emitSuperHelpers && tx.hasSuperElementAccess {
@@ -669,7 +674,7 @@ func (tx *asyncTransformer) createCaptureArgumentsStatement() *ast.Node {
 		nil,
 		tx.Factory().NewIdentifier("arguments"),
 	)
-	declList := tx.Factory().NewVariableDeclarationList(ast.NodeFlagsNone, tx.Factory().NewNodeList([]*ast.Node{variable}))
+	declList := tx.Factory().NewVariableDeclarationList(tx.Factory().NewNodeList([]*ast.Node{variable}), ast.NodeFlagsNone)
 	statement := tx.Factory().NewVariableStatement(nil, declList)
 	tx.EmitContext().AddEmitFlags(statement, printer.EFStartOnNewLine|printer.EFCustomPrologue)
 	return statement
@@ -717,12 +722,25 @@ func (tx *asyncTransformer) transformAsyncFunctionParameterList(node *ast.Node) 
 }
 
 func (tx *asyncTransformer) transformAsyncFunctionBody(node *ast.Node, outerParameters *ast.NodeList) *ast.Node {
+	isArrow := node.Kind == ast.KindArrowFunction
+	savedCapturedSuperProperties := tx.capturedSuperProperties
+	savedHasSuperElementAccess := tx.hasSuperElementAccess
+	savedHasSuperPropertyAssignment := tx.hasSuperPropertyAssignment
+	savedSuperBinding := tx.superBinding
+	savedSuperIndexBinding := tx.superIndexBinding
+	if !isArrow {
+		tx.capturedSuperProperties = &collections.OrderedSet[string]{}
+		tx.hasSuperElementAccess = false
+		tx.hasSuperPropertyAssignment = false
+		tx.superBinding = tx.Factory().NewUniqueNameEx("_super", printer.AutoGenerateOptions{Flags: printer.GeneratedIdentifierFlagsOptimistic | printer.GeneratedIdentifierFlagsFileLevel})
+		tx.superIndexBinding = tx.Factory().NewUniqueNameEx("_superIndex", printer.AutoGenerateOptions{Flags: printer.GeneratedIdentifierFlagsOptimistic | printer.GeneratedIdentifierFlagsFileLevel})
+	}
+
 	innerParameters := (*ast.NodeList)(nil)
 	if !isSimpleParameterList(node.Parameters()) {
 		innerParameters = tx.EmitContext().VisitParameters(node.ParameterList(), tx.Visitor())
 	}
 
-	isArrow := node.Kind == ast.KindArrowFunction
 	savedLexicalArguments := tx.lexicalArguments
 	captureLexicalArguments := tx.lexicalArguments.binding == nil
 	if captureLexicalArguments {
@@ -768,31 +786,20 @@ func (tx *asyncTransformer) transformAsyncFunctionBody(node *ast.Node, outerPara
 		tx.recordDeclarationName(parameter, tx.enclosingFunctionParameterNames)
 	}
 
-	savedCapturedSuperProperties := tx.capturedSuperProperties
-	savedHasSuperElementAccess := tx.hasSuperElementAccess
-	savedHasSuperPropertyAssignment := tx.hasSuperPropertyAssignment
-	savedSuperBinding := tx.superBinding
-	savedSuperIndexBinding := tx.superIndexBinding
-	if !isArrow {
-		tx.capturedSuperProperties = &collections.OrderedSet[string]{}
-		tx.hasSuperElementAccess = false
-		tx.hasSuperPropertyAssignment = false
-		tx.superBinding = tx.Factory().NewUniqueNameEx("_super", printer.AutoGenerateOptions{Flags: printer.GeneratedIdentifierFlagsOptimistic | printer.GeneratedIdentifierFlagsFileLevel})
-		tx.superIndexBinding = tx.Factory().NewUniqueNameEx("_superIndex", printer.AutoGenerateOptions{Flags: printer.GeneratedIdentifierFlagsOptimistic | printer.GeneratedIdentifierFlagsFileLevel})
-	}
-
 	hasLexicalThis := tx.inHasLexicalThisContext()
 
 	asyncBody := tx.transformAsyncFunctionBodyWorker(node.Body())
 	asyncBody = tx.Factory().UpdateBlock(
 		asyncBody.AsBlock(),
 		tx.EmitContext().EndAndMergeVariableEnvironmentList(asyncBody.StatementList()),
+		asyncBody.AsBlock().MultiLine,
 	)
 
 	// Substitute super property accesses with _super/_superIndex helpers
 	emitSuperHelpers := tx.capturedSuperProperties != nil &&
 		(tx.capturedSuperProperties.Size() > 0 || tx.hasSuperElementAccess)
 	if emitSuperHelpers {
+		innerParameters = tx.superAccessVisitor.VisitNodes(innerParameters)
 		asyncBody = tx.substituteSuperAccessesInBody(asyncBody)
 	}
 
@@ -850,6 +857,7 @@ func (tx *asyncTransformer) transformAsyncFunctionBody(node *ast.Node, outerPara
 			result = tx.Factory().UpdateBlock(
 				block.AsBlock(),
 				tx.EmitContext().MergeEnvironmentList(block.StatementList(), []*ast.Node{tx.createCaptureArgumentsStatement()}),
+				block.AsBlock().MultiLine,
 			)
 		}
 	}
@@ -879,6 +887,7 @@ func (tx *asyncTransformer) transformAsyncFunctionBodyWorker(body *ast.Node) *as
 		return tx.Factory().UpdateBlock(
 			body.AsBlock(),
 			tx.asyncBodyVisitor.VisitNodes(body.StatementList()),
+			body.AsBlock().MultiLine,
 		)
 	}
 	// Convert expression body to block body with return statement
