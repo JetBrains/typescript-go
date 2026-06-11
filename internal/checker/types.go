@@ -684,10 +684,6 @@ func (t *Type) ObjectFlags() ObjectFlags {
 	return t.objectFlags
 }
 
-func (t *Type) Alias() *TypeAlias {
-	return t.alias
-}
-
 // Casts for concrete struct types
 
 func (t *Type) AsIntrinsicType() *IntrinsicType           { return t.data.(*IntrinsicType) }
@@ -897,10 +893,6 @@ func (t *LiteralType) RegularType() *Type {
 
 func (t *LiteralType) String() string {
 	return ValueToString(t.value)
-}
-
-func (t *LiteralType) FreshType() *Type {
-	return t.freshType
 }
 
 // UniqueESSymbolTypeData
