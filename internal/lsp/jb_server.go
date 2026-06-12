@@ -131,16 +131,7 @@ func (s *Server) GetProjectAndFileName(
 		}
 	}
 
-	_, snapshot, err := s.session.GetLanguageServiceAndSnapshot(ctx, fileUri)
-	if err != nil {
-		if projectFileNameUri != nil && canOpenSelfManagedProject(s, projectFileName) {
-			if p := GetOrCreateSelfManagedProjectForFile(s, projectFileName, file, ctx); p != nil {
-				return p, file, nil
-			}
-		}
-
-		return nil, file, ProjectNotFoundError
-	}
+	snapshot := s.session.Snapshot()
 
 	if projectFileNameUri != nil {
 		for _, p := range snapshot.ProjectCollection.Projects() {
