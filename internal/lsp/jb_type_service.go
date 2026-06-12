@@ -365,7 +365,7 @@ func IdeGetTypeText(
 	if symbol != nil && symbol.Declarations != nil && len(symbol.Declarations) == 1 {
 		enclosingDeclaration = symbol.Declarations[0]
 	}
-	typeText := convertContext.checker.TypeToStringEx(t, enclosingDeclaration, formatFlags)
+	typeText := convertContext.checker.TypeToStringEx(t, enclosingDeclaration, formatFlags, nil)
 
 	result := collections.NewOrderedMapWithSizeHint[string, interface{}](1)
 	result.Set("typeText", typeText)
@@ -394,7 +394,7 @@ func IdeGetCompletionWithSymbols(
 	typeCheckerForData, doneForData := languageService.GetProgram().GetTypeCheckerForFile(ctx, sourceFile)
 	defer doneForData()
 	preferences := languageService.UserPreferences()
-	completionInfo := languageService.GetCompletionInfoWithSymbols(ctx, typeCheckerForData, sourceFile, positionOffset, preferences)
+	completionInfo := languageService.GetCompletionInfoWithSymbols(ctx, typeCheckerForData, sourceFile, positionOffset, &preferences)
 
 	if completionInfo == nil {
 		return nil, nil

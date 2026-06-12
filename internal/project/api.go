@@ -5,7 +5,6 @@ import (
 	"context"
 
 	"github.com/microsoft/typescript-go/internal/collections"
-	"github.com/microsoft/typescript-go/internal/tspath"
 )
 
 // APIOpenProject opens a project and returns a ref'd snapshot.
@@ -56,12 +55,16 @@ func (s *Session) APIUpdateWithFileChanges(ctx context.Context, apiFileChanges F
 
 // CloseProject - for JB fork, because flushChanges is private
 func (s *Session) CloseProject(ctx context.Context, configFileName string) error {
+	s.snapshotUpdateMu.Lock()
+	defer s.snapshotUpdateMu.Unlock()
+	s.cancelScheduledSnapshotUpdate()
+
 	fileChanges, overlays, ataChanges, _ := s.flushChanges(ctx)
-	newSnapshot := s.UpdateSnapshot(ctx, overlays, SnapshotChange{
+	newSnapshot := s.updateSnapshotRef(ctx, overlays, SnapshotChange{
 		fileChanges: fileChanges,
 		ataChanges:  ataChanges,
 		apiRequest: &APISnapshotRequest{
-			CloseProjects: collections.NewSetFromItems[tspath.Path](s.toPath(configFileName)),
+			CloseProjects: collections.NewSetFromItems(s.toPath(configFileName)),
 		},
 	})
 
