@@ -218,7 +218,7 @@ jobs:
   release:
     name: Create GitHub Release
     needs: [assemble, pack-npm]
-    if: ${{ needs.assemble.outputs.DO_RELEASE == 'true' }} && github.ref_name == 'main'
+    if: ${{ needs.assemble.outputs.DO_RELEASE == 'true' && github.ref_name == 'main' }}
     runs-on: ubuntu-latest
     steps:
       - name: Download assembled archives
