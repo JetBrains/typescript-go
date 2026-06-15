@@ -115,12 +115,47 @@ jobs:
 
       - run: npm ci
 
+      # --forRelease requires --setPrerelease. Derive the prerelease suffix from the version
+      # requested for this run (the workflow_dispatch version, or the tag name) so the npm
+      # package version matches the release tag. getVersion() in the Herebyfile builds the
+      # version as <base-from-internal/core/version.go>-<suffix>, e.g. suffix "dev.3" yields
+      # 7.0.0-dev.3 for a requested version of 7.0.0-dev.3.
+      - name: Compute prerelease suffix
+        id: ver
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF_TYPE" == "tag" && -n "$REF_NAME" ]]; then
+            VERSION="${REF_NAME#v}"
+          elif [[ -n "${INPUT_VERSION:-}" ]]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="0.0.0-dev-${SHA:0:8}"
+          fi
+          if [[ "$VERSION" == *-* ]]; then
+            SUFFIX="${VERSION#*-}"
+          else
+            # No prerelease component in the requested version, but --forRelease requires one.
+            SUFFIX="dev"
+          fi
+          echo "Requested version: $VERSION -> setPrerelease: $SUFFIX"
+          echo "SUFFIX=$SUFFIX" >> "$GITHUB_OUTPUT"
+
       # Build and pack the @typescript/native-preview meta package plus all per-platform
       # packages. --forRelease enables cross-compilation of every supported platform (the
       # Go binary is built with CGO_ENABLED=0, so this works from a single Linux runner).
       # Signing is intentionally not invoked (it lives only in native-preview:release).
-      - run: npx hereby native-preview:build-packages --forRelease
-      - run: npx hereby native-preview:pack-packages --forRelease
+      - name: Build and pack npm packages
+        env:
+          SUFFIX: ${{ steps.ver.outputs.SUFFIX }}
+        run: |
+          set -euo pipefail
+          npx hereby native-preview:build-packages --forRelease --setPrerelease="$SUFFIX"
+          npx hereby native-preview:pack-packages --forRelease --setPrerelease="$SUFFIX"
 
       - run: ls -lah built/npm
 
