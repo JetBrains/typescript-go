@@ -1337,6 +1337,32 @@ export const tuple: readonly [number, string?, ...boolean[]] = [1];
         }
     });
 
+    test("Checker.getTrueTypeOfConditionalType() and getFalseTypeOfConditionalType()", async () => {
+        const api = spawnAPI(typeFiles);
+        try {
+            const snapshot = await api.updateSnapshot({ openProject: "/tsconfig.json" });
+            const project = snapshot.getProject("/tsconfig.json")!;
+            const symbol = await project.checker.resolveName("Cond", SymbolFlags.TypeAlias, { document: "/src/types.ts", position: 0 });
+            assert.ok(symbol);
+            const type = await project.checker.getDeclaredTypeOfSymbol(symbol);
+            assert.ok(type);
+            assert.ok(type.flags & TypeFlags.Conditional, `Expected ConditionalType, got flags ${type.flags}`);
+
+            const trueType = await project.checker.getTrueTypeOfConditionalType(type as ConditionalType);
+            assert.ok(trueType, "should return the true-branch type");
+            assert.ok(trueType.flags & TypeFlags.StringLiteral, `Expected StringLiteral for true branch, got flags ${trueType.flags}`);
+            assert.equal((trueType as LiteralType).value, "yes");
+
+            const falseType = await project.checker.getFalseTypeOfConditionalType(type as ConditionalType);
+            assert.ok(falseType, "should return the false-branch type");
+            assert.ok(falseType.flags & TypeFlags.StringLiteral, `Expected StringLiteral for false branch, got flags ${falseType.flags}`);
+            assert.equal((falseType as LiteralType).value, "no");
+        }
+        finally {
+            await api.close();
+        }
+    });
+
     test("TemplateLiteralType.texts and getTypes()", async () => {
         const { type, api } = await getTypeAtName(spawnAPI(typeFiles), "tpl:");
         try {

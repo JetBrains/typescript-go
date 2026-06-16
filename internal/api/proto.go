@@ -129,6 +129,8 @@ const (
 	MethodGetIndexInfosOfType               Method = "getIndexInfosOfType"
 	MethodGetConstraintOfTypeParameter      Method = "getConstraintOfTypeParameter"
 	MethodGetTypeArguments                  Method = "getTypeArguments"
+	MethodGetTrueTypeOfConditionalType      Method = "getTrueTypeOfConditionalType"
+	MethodGetFalseTypeOfConditionalType     Method = "getFalseTypeOfConditionalType"
 
 	// Reference methods
 	MethodGetReferencesToSymbolInFile Method = "getReferencesToSymbolInFile"
@@ -376,6 +378,8 @@ var unmarshalers = map[Method]func([]byte) (any, error){
 	MethodGetIndexInfosOfType:               unmarshallerFor[CheckerTypeParams],
 	MethodGetConstraintOfTypeParameter:      unmarshallerFor[CheckerTypeParams],
 	MethodGetTypeArguments:                  unmarshallerFor[CheckerTypeParams],
+	MethodGetTrueTypeOfConditionalType:      unmarshallerFor[CheckerTypeParams],
+	MethodGetFalseTypeOfConditionalType:     unmarshallerFor[CheckerTypeParams],
 	MethodGetReferencesToSymbolInFile:       unmarshallerFor[GetReferencesToSymbolInFileParams],
 	MethodGetReferencedSymbolsForNode:       unmarshallerFor[GetReferencedSymbolsForNodeParams],
 	MethodGetSignatureUsages:                unmarshallerFor[GetSignatureUsagesParams],

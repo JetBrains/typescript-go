@@ -525,6 +525,10 @@ func (s *Session) HandleRequest(ctx context.Context, method string, params json.
 		return s.handleGetConstraintOfTypeParameter(ctx, parsed.(*CheckerTypeParams))
 	case string(MethodGetTypeArguments):
 		return s.handleGetTypeArguments(ctx, parsed.(*CheckerTypeParams))
+	case string(MethodGetTrueTypeOfConditionalType):
+		return s.handleGetTrueTypeOfConditionalType(ctx, parsed.(*CheckerTypeParams))
+	case string(MethodGetFalseTypeOfConditionalType):
+		return s.handleGetFalseTypeOfConditionalType(ctx, parsed.(*CheckerTypeParams))
 	case string(MethodGetAnyType):
 		return s.handleGetIntrinsicType(ctx, parsed.(*GetIntrinsicTypeParams), (*checker.Checker).GetAnyType)
 	case string(MethodGetStringType):
@@ -2048,6 +2052,36 @@ func (s *Session) handleGetTypeArguments(ctx context.Context, params *CheckerTyp
 	}
 
 	return results, nil
+}
+
+func (s *Session) handleGetTrueTypeOfConditionalType(ctx context.Context, params *CheckerTypeParams) (*TypeResponse, error) {
+	setup, err := s.setupChecker(ctx, params.Snapshot, params.Project)
+	if err != nil {
+		return nil, err
+	}
+	defer setup.done()
+
+	t, err := setup.sd.resolveTypeHandle(params.Type)
+	if err != nil {
+		return nil, err
+	}
+
+	return setup.sd.newTypeResponse(setup.checker.GetTrueTypeOfConditionalType(t)), nil
+}
+
+func (s *Session) handleGetFalseTypeOfConditionalType(ctx context.Context, params *CheckerTypeParams) (*TypeResponse, error) {
+	setup, err := s.setupChecker(ctx, params.Snapshot, params.Project)
+	if err != nil {
+		return nil, err
+	}
+	defer setup.done()
+
+	t, err := setup.sd.resolveTypeHandle(params.Type)
+	if err != nil {
+		return nil, err
+	}
+
+	return setup.sd.newTypeResponse(setup.checker.GetFalseTypeOfConditionalType(t)), nil
 }
 
 func (sd *snapshotData) resolveNodeHandle(program *compiler.Program, handle NodeHandle) (*ast.Node, error) {

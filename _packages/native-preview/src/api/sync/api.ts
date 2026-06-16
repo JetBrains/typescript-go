@@ -1057,6 +1057,24 @@ export class Checker {
         });
         return data ? data.map(d => this.objectRegistry.getOrCreateType(d)) : [];
     }
+
+    getTrueTypeOfConditionalType(type: ConditionalType): Type | undefined {
+        const data = this.client.apiRequest<TypeResponse | null>("getTrueTypeOfConditionalType", {
+            snapshot: this.snapshotId,
+            project: this.projectId,
+            type: type.id,
+        });
+        return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+    }
+
+    getFalseTypeOfConditionalType(type: ConditionalType): Type | undefined {
+        const data = this.client.apiRequest<TypeResponse | null>("getFalseTypeOfConditionalType", {
+            snapshot: this.snapshotId,
+            project: this.projectId,
+            type: type.id,
+        });
+        return data ? this.objectRegistry.getOrCreateType(data) : undefined;
+    }
 }
 
 export interface PrintNodeOptions {
