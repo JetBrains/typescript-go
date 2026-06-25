@@ -255,6 +255,10 @@ jobs:
     needs: [assemble, pack-npm]
     if: ${{ needs.assemble.outputs.DO_RELEASE == 'true' && (github.ref_name == 'main' || github.ref_name == 'api-dev' || github.ref_name == 'api-dev-release') }}
     runs-on: ubuntu-latest
+    permissions:
+      # required to use OIDC for AWS credentials
+      contents: write
+      id-token: write
     steps:
       - name: Download assembled archives
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
@@ -363,3 +367,19 @@ jobs:
                 }
               }
             }
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::379565177229:role/download-webstorm-typescript-go-deployer
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: eu-west-1
+
+      # Upload exactly the asset set published to the GitHub Release, flat. The archives and
+      # checksums live in '.', the npm tarballs and manifest in 'npm-dist'; a separate copy
+      # from 'npm-dist' lands them at the prefix root (no nested 'npm-dist/' on the CDN).
+      - name: Upload release assets to CDN
+        run: |
+          set -euo pipefail
+          aws s3 cp . s3://download-prod-cdn.jetbrains.com/webstorm/typescript-go --acl private --recursive --region eu-west-1 --no-guess-mime-type --exclude "*" --include "*.zip" --include "*.sha256"
+          aws s3 cp npm-dist s3://download-prod-cdn.jetbrains.com/webstorm/typescript-go --acl private --recursive --region eu-west-1 --no-guess-mime-type --exclude "*" --include "*.tgz" --include "publish-order.json"
