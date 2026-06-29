@@ -5,10 +5,22 @@ import (
 	"testing"
 
 	"github.com/microsoft/typescript-go/internal/bundled"
+	"github.com/microsoft/typescript-go/internal/project"
 	"github.com/microsoft/typescript-go/internal/testutil/projecttestutil"
 	"github.com/microsoft/typescript-go/internal/tspath"
 	"gotest.tools/v3/assert"
 )
+
+func TestNewProjectResponseHandlesUnloadedProject(t *testing.T) {
+	t.Parallel()
+
+	response := NewProjectResponse(&project.Project{})
+
+	assert.Equal(t, response.Id, ProjectID(""))
+	assert.Equal(t, response.ConfigFileName, "")
+	assert.Assert(t, response.RootFiles == nil)
+	assert.Assert(t, response.CompilerOptions == nil)
+}
 
 // TestSessionTracksAndReleasesAPIRefs verifies that an API session holds at most
 // one ref per opened project/file (opens are idempotent) and releases exactly
