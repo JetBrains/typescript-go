@@ -5,21 +5,67 @@ import (
 	"testing"
 
 	"github.com/microsoft/typescript-go/internal/bundled"
-	"github.com/microsoft/typescript-go/internal/project"
+	"github.com/microsoft/typescript-go/internal/lsp/lsproto"
 	"github.com/microsoft/typescript-go/internal/testutil/projecttestutil"
 	"github.com/microsoft/typescript-go/internal/tspath"
 	"gotest.tools/v3/assert"
 )
 
-func TestNewProjectResponseHandlesUnloadedProject(t *testing.T) {
+func TestUpdateSnapshotResponseHandlesUnloadedAncestorProject(t *testing.T) {
 	t.Parallel()
+	if !bundled.Embedded {
+		t.Skip("bundled files are not embedded")
+	}
 
-	response := NewProjectResponse(&project.Project{})
+	const (
+		nestedConfigFileName   = "/repo/packages/app/tsconfig.json"
+		ancestorConfigFileName = "/repo/packages/tsconfig.json"
+		fileName               = "/repo/packages/app/src/index.ts"
+	)
+	files := map[string]any{
+		ancestorConfigFileName: `{ "files": [] }`,
+		nestedConfigFileName: `{
+			"compilerOptions": { "composite": true },
+			"include": ["**/*"]
+		}`,
+		fileName: `let s: string = 1234;`,
+	}
+	projectSession, _ := projecttestutil.Setup(files)
+	defer projectSession.Close()
 
-	assert.Equal(t, response.Id, ProjectID(""))
-	assert.Equal(t, response.ConfigFileName, "")
-	assert.Assert(t, response.RootFiles == nil)
-	assert.Assert(t, response.CompilerOptions == nil)
+	projectSession.DidOpenFile(context.Background(), lsproto.DocumentUri("file://"+fileName), 1, files[fileName].(string), lsproto.LanguageKindTypeScript)
+	snapshot := projectSession.Snapshot()
+	nestedProject := snapshot.ProjectCollection.ConfiguredProject(tspath.Path(nestedConfigFileName))
+	assert.Assert(t, nestedProject != nil)
+	assert.Assert(t, nestedProject.CommandLine != nil)
+	ancestorProject := snapshot.ProjectCollection.ConfiguredProject(tspath.Path(ancestorConfigFileName))
+	assert.Assert(t, ancestorProject != nil)
+	assert.Assert(t, ancestorProject.CommandLine == nil)
+
+	session := NewSession(projectSession, nil)
+	defer session.Close()
+
+	response, err := session.handleUpdateSnapshot(context.Background(), &UpdateSnapshotParams{
+		OpenProjects: []DocumentIdentifier{{FileName: nestedConfigFileName}},
+	})
+	assert.NilError(t, err)
+
+	var foundNestedProject bool
+	var foundAncestorProject bool
+	for _, project := range response.Projects {
+		switch project.ConfigFileName {
+		case nestedConfigFileName:
+			foundNestedProject = true
+			assert.Assert(t, project.RootFiles != nil)
+			assert.Assert(t, project.CompilerOptions != nil)
+		case ancestorConfigFileName:
+			foundAncestorProject = true
+			assert.Assert(t, project.RootFiles == nil)
+			assert.Assert(t, project.CompilerOptions == nil)
+		}
+	}
+	assert.Assert(t, foundNestedProject)
+	assert.Assert(t, foundAncestorProject)
 }
 
 // TestSessionTracksAndReleasesAPIRefs verifies that an API session holds at most
