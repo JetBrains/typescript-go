@@ -157,6 +157,22 @@ jobs:
           npx hereby native-preview:build-packages --forRelease --setPrerelease="$SUFFIX"
           npx hereby native-preview:pack-packages --forRelease --setPrerelease="$SUFFIX"
 
+      # pack-packages strips the version from the tarball names (e.g. native-preview.tgz,
+      # native-preview-linux-x64.tgz). Re-insert it so the npm assets carry the same version
+      # as the per-platform zip archives, e.g. native-preview-v7.0.0-dev.jetbrains.20260702.1.tgz.
+      # The version is read from the built meta package so it always matches the real package
+      # version regardless of how it was derived.
+      - name: Version-suffix npm tarballs
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./built/npm/native-preview/package.json').version")"
+          echo "Package version: $VERSION"
+          cd built/npm
+          for f in *.tgz; do
+            base="${f%.tgz}"
+            mv -v "$f" "${base}-v${VERSION}.tgz"
+          done
+
       - run: ls -lah built/npm
 
       - name: Upload npm package artifact
