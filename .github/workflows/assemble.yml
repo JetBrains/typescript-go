@@ -165,7 +165,7 @@ jobs:
       - name: Version-suffix npm tarballs
         run: |
           set -euo pipefail
-          VERSION="$(node -p "require('./built/npm/native-preview/package.json').version")"
+          VERSION="$(node -p "require('./built/npm/typescript/package.json').version")"
           echo "Package version: $VERSION"
           cd built/npm
           for f in *.tgz; do
