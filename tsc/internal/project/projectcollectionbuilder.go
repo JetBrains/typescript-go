@@ -1445,7 +1445,7 @@ func (b *ProjectCollectionBuilder) isSupportedInInferredProject(fileName tspath.
 	if fileName.IsDynamic() || core.GetScriptKindFromFileName(fileName) != core.ScriptKindUnknown {
 		return true
 	}
-	if file := b.fs.GetFile(fileName); file != nil && file.IsOverlay() && fileName.AnyExtension(nil, tspath.CaseSensitive) == "" {
+	if file := b.fs.GetFile(fileName); file != nil && file.IsOverlay() && (file.Kind() != core.ScriptKindUnknown || fileName.AnyExtension(nil, tspath.CaseSensitive) == "") {
 		return true
 	}
 	return fileName.ExtensionIsOneOf(b.inferredContentMapperExtensions)

@@ -352,7 +352,14 @@ func (e *symbolExtractor) createExport(symbol *ast.Symbol, moduleID ModuleID, mo
 			// Last resort: derive identifier from the file name. Use FileName() (original
 			// casing) rather than ModuleID/Path() which is lowercased on case-insensitive
 			// file systems, losing PascalCase.
-			export.localName = lsutil.ModuleSpecifierToValidIdentifier(fileNameForDefaultExportName(targetSymbol, moduleFileName, moduleID), false)
+			fileName := fileNameForDefaultExportName(targetSymbol, moduleFileName, moduleID)
+			if path, ok := tspath.TryRootedPathFromNormalized(fileName); ok {
+				filePath := tspath.RootedFilePathFromPath(path)
+				if core.GetScriptKindFromFileName(filePath) == core.ScriptKindUnknown && filePath.AnyExtension(nil, tspath.CaseSensitive) != "" {
+					return nil, nil
+				}
+			}
+			export.localName = lsutil.ModuleSpecifierToValidIdentifier(fileName, false)
 		}
 	}
 
