@@ -1884,6 +1884,7 @@ func GetSupportedExtensions(compilerOptions *core.CompilerOptions, extraExtensio
 	} else {
 		builtins = tspath.SupportedTSExtensions
 	}
+	builtins = slices.Concat(builtins, [][]string{{".vue"}})
 	if len(extraExtensions) == 0 {
 		return builtins
 	}

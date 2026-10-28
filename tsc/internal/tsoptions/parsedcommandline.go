@@ -391,9 +391,13 @@ func (p *ParsedCommandLine) ContentMappers() []*contentmapper.Mapper {
 // ContentMapperExtensions returns the flattened list of file extensions registered by the
 // config's content mappers.
 func (p *ParsedCommandLine) ContentMapperExtensions() []string {
-	return core.FlatMap(p.ContentMappers(), func(m *contentmapper.Mapper) []string {
+	extensions := core.FlatMap(p.ContentMappers(), func(m *contentmapper.Mapper) []string {
 		return m.Definition.Extensions
 	})
+	if !slices.Contains(extensions, ".vue") {
+		extensions = append(extensions, ".vue")
+	}
+	return extensions
 }
 
 // GetContentMapperForFileName returns the configured content mapper whose extensions include fileName,
